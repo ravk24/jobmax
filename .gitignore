@@ -32,6 +32,12 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...but the template must ship, or `cp .env.example .env.local` fails on a fresh clone
+!.env.example
+
+# local agent config — .mcp.json holds the InsForge API key in plaintext
+.mcp.json
+.claude/settings.local.json
 
 # vercel
 .vercel

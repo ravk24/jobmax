@@ -1,26 +1,156 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* Scopes dark: utilities to an explicit .dark ancestor so OS dark mode never
+   repaints a light-only design. Nothing in JobMax sets .dark. */
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  /* Page and surface backgrounds */
+  --color-background: #f6f7fb;
+  --color-surface: #ffffff;
+  --color-surface-secondary: #f9fafb;
+  --color-surface-tertiary: #f2f5f7;
+  --color-surface-muted: #f4f5fb;
+
+  /* Borders */
+  --color-border: #e7eaf3;
+  --color-border-light: #e5e7eb;
+  --color-border-muted: #dfe1e7;
+
+  /* Text */
+  --color-text-primary: #101828;
+  --color-text-secondary: #6a7282;
+  --color-text-muted: #99a1af;
+  --color-text-dark: #364153;
+  --color-text-darker: #36394a;
+  --color-text-darkest: #111827;
+  --color-text-black: #131316;
+  --color-text-slate: #272835;
+  --color-text-slate-medium: #666d80;
+
+  /* Primary accent — purple */
+  --color-accent: #7c5cfc;
+  --color-accent-dark: #5e4cff;
+  --color-accent-light: #f3e8ff;
+  --color-accent-muted: #faf5ff;
+  --color-accent-foreground: #ffffff;
+
+  /* Success — green */
+  --color-success: #10b981;
+  --color-success-alt: #00bc7d;
+  --color-success-dark: #007a55;
+  --color-success-darker: #009966;
+  --color-success-light: #d0fae5;
+  --color-success-lightest: #ecfdf5;
+  --color-success-foreground: #007a55;
+
+  /* Info — blue */
+  --color-info: #61a8ff;
+  --color-info-dark: #155dfc;
+  --color-info-medium: #2b7fff;
+  --color-info-light: #dbeafe;
+  --color-info-lightest: #eff6ff;
+  --color-info-foreground: #155dfc;
+  --color-info-muted: #94a2c5;
+
+  /* Warning — orange */
+  --color-warning: #ff8904;
+  --color-warning-foreground: #ffffff;
+
+  /* Error — red */
+  --color-error: #ef4444;
+  --color-error-foreground: #ffffff;
+
+  /* LinkedIn brand */
+  --color-linkedin: #0a66c2;
+  --color-linkedin-light: #dce6f1;
+  --color-linkedin-foreground: #ffffff;
+
+  /* Dark overlays */
+  --color-overlay: #111827;
+  --color-overlay-dark: #131316;
+
+  /* Border radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
 }
 
 @theme inline {
-  --color-background: var(--background);
+  /* Inter is self-hosted by next/font under a generated family name, so the
+     font tokens resolve through the next/font variables, not a literal lookup. */
+  --font-sans: var(--font-inter), sans-serif;
+  --font-heading: var(--font-inter), sans-serif;
+  --font-mono: var(--font-jetbrains-mono), monospace;
+
+  /* shadcn/ui semantic tokens. Mapped onto the JobMax palette in :root below so
+     shadcn primitives inherit the design system instead of the neutral default.
+     Names that collide with a JobMax token (background, accent, border, radius)
+     are deliberately absent — the @theme block above owns those. */
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-destructive: var(--destructive);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root {
+  --foreground: var(--color-text-primary);
+  --card: var(--color-surface);
+  --card-foreground: var(--color-text-primary);
+  --popover: var(--color-surface);
+  --popover-foreground: var(--color-text-primary);
+  --primary: var(--color-accent);
+  --primary-foreground: var(--color-accent-foreground);
+  --secondary: var(--color-surface-secondary);
+  --secondary-foreground: var(--color-text-primary);
+  --muted: var(--color-surface-secondary);
+  --muted-foreground: var(--color-text-secondary);
+  --destructive: var(--color-error);
+  --input: var(--color-border);
+  --ring: var(--color-accent);
+  --radius: 8px;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-text-primary;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Logo mark gradient, per ui-tokens.md § Logo. */
+@utility logo-gradient {
+  background-image: linear-gradient(
+    45deg,
+    var(--color-accent) 0%,
+    #4a2ec5 100%
+  );
+}
+
+/* Soft mesh wash behind the hero and closing CTA. The pastel stops are
+   decorative and exist only here so no component carries a raw hex. */
+@utility aurora {
+  background-color: var(--color-surface);
+  background-image:
+    radial-gradient(58% 68% at 10% 16%, #fbd9ee 0%, transparent 62%),
+    radial-gradient(46% 58% at 30% 88%, #e8dafb 0%, transparent 66%),
+    radial-gradient(56% 74% at 90% 28%, #d8e4fb 0%, transparent 64%),
+    radial-gradient(48% 58% at 74% 92%, #cfe0fa 0%, transparent 62%),
+    radial-gradient(44% 52% at 50% 46%, #ffffff 0%, transparent 72%);
 }
