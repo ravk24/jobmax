@@ -6,10 +6,10 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ## Current Status
 
-**Phase:** Phase 1 — Foundation
-**Last completed:** 04 Database Schema (2026-07-30) — Phase 1 is now complete apart from the two outstanding Feature 02 clicks
+**Phase:** Phase 2 — Profile Page
+**Last completed:** 05 Profile Page — Full UI (2026-07-30). Phase 1 is complete apart from the two outstanding Feature 02 clicks.
 **In progress:** 02 Auth — **working end to end for Google.** Anon key is in `.env.local`, the OAuth round trip completes, and post-login lands on `/profile`. Both original blockers are resolved. Remaining: confirm GitHub sign-in and sign-out.
-**Next:** 05 Profile Page — Full UI. Still outstanding from 02: click through GitHub sign-in and the Log out button (which also verifies `user_logged_out`), then tick 02.
+**Next:** 06 Profile Save Logic. Still outstanding from 02: click through GitHub sign-in and the Log out button (which also verifies `user_logged_out`), then tick 02.
 
 ---
 
@@ -24,7 +24,7 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ### Phase 2 — Profile Page
 
-- [ ] 05 Profile Page — Full UI
+- [x] 05 Profile Page — Full UI (mock data, no save logic — Feature 06 wires it)
 - [ ] 06 Profile Save Logic
 - [ ] 07 AI Profile Extraction from Resume
 - [ ] 08 Resume PDF Generation from Profile
@@ -140,6 +140,42 @@ Fix: build the redirect response *first* (targeting `LOGIN_ROUTE` as a placehold
 **`user_signed_in` cannot be captured on the landing page alone** — every load there would fire it. The callback appends `SIGNED_IN_PARAM` to the post-login redirect and `SignInTracker` captures once, then strips the param via `history.replaceState`. The tracker lives in the **root layout**, not on `/profile`, so it survives `POST_LOGIN_ROUTE` moving to `/dashboard` in Feature 14.
 
 **PostHog drops every event from a detected bot, which makes headless verification lie.** `posthog.capture()` returns `undefined` and no request is made when the UA contains `HeadlessChrome` or `navigator.webdriver` is set. The first verification run looked like a broken integration — flags and remote config loaded fine, but zero `/e/` requests. Override both over CDP (`Network.setUserAgentOverride` plus an `addScriptToEvaluateOnNewDocument` that hides `navigator.webdriver`) or the harness measures PostHog's bot filter instead of the app.
+
+### Feature 05 — Profile Page UI (2026-07-30)
+
+**Mock data, no persistence.** `MOCK_PROFILE` in `app/profile/page.tsx` is typed as `Profile` so it cannot drift from `db/schema.sql`. Feature 06 replaces it with a real read plus a Server Action; the Save button currently submits nothing.
+
+**`PROTECTED_ROUTES` in `lib/auth.ts` is not what protects routes.** `proxy.ts` carries its own hardcoded `config.matcher`, and Next requires a literal array there — it cannot be built from an imported constant. The two lists duplicate each other and can drift. `isProtectedRoute()` is currently unused. Worth reconciling before more protected routes are added.
+
+**The design mock is internally inconsistent about Education** — it tags `EDUCATION` as missing while showing "High School" and "Computer Science" filled. Resolved by treating education as complete only when **degree and institution** are both present, which reproduces the mock exactly (partially filled, still flagged) and is the more realistic rule.
+
+**The Cover Letter Tone dropdown was omitted.** `build-plan.md` Feature 05 lists it, but the design does not show it and cover letter generation is explicitly out of scope in `project-overview.md`. `profiles.cover_letter_tone` remains in the schema, unused.
+
+**Two `ui-rules.md` rules were corrected against the design** — the navbar "no underline" rule (the app navbar's active item does carry an accent underline) and the white form-input background (controls sit on `surface-secondary`). Both were contradicted by `context/design/profile.png`, which that file names as the source of truth.
+
+**Verified:** no horizontal overflow at 1440/1024/430; add and remove a skill; add a role (1→2); "Currently working here" disables *and* clears the end date. Banner reads 70% with exactly `PHONE`, `LOCATION`, `EDUCATION`. `tsc`, `lint`, `build` clean.
+
+**Verification required temporarily bypassing auth** — `/profile` is protected by `proxy.ts`, so a headless browser with no session only ever sees `/login`. The page guard *and* the proxy matcher were both patched, then reverted; `git diff` confirmed both files identical to `HEAD` and `/profile` returning 307 again afterwards.
+
+---
+
+### Backlog closed before Feature 05 (2026-07-30)
+
+Five questions that had been carried across sessions are now settled. They are decisions, not open items — do not reopen them without a reason.
+
+**Profile completion percentage and missing fields are derived, never stored.** `profiles` deliberately has no column for either. The data needed to compute them is already in the row, and a stored percentage goes stale the moment any field changes. `calculateCompletion()` in `lib/profile.ts` is the single source of truth for which fields count as required. Feature 06 must not add a column for this.
+
+**The `hasSession` gate on `user_signed_in` may under-count — accepted.** `getCurrentUser()` returns `null` on error as well as when signed out, so a transient InsForge failure during the post-login render drops the event. A silent under-count is preferable to a metric any visitor can inflate by putting `?signed_in=1` on a URL.
+
+**`defaults: "2026-01-30"` stays.** It resolves `capture_pageview` to `history_change` and works. Changing the date changes autocapture behaviour; the reasoning is commented in `instrumentation-client.ts`.
+
+**`login_page_viewed` stays despite overlapping `$pageview`.** It is a stable funnel step that survives route changes and does not depend on pathname filtering.
+
+**`agent_runs.user_id` → `profiles` ordering constraint stays.** No agent run can exist before a profile row is saved in Feature 06. That matches the intended flow, since matching requires a profile.
+
+**Repo hygiene done at the same time:** the four unused `public/` design mocks were deleted (byte-identical copies live in `context/design/`, the canonical home; `public/dashboard.png` stays because `DashboardPreview.tsx` renders it), `memory.md` and `posthog-setup-report.md` were untracked and gitignored as session artefacts, and the Phase 1 commit message was corrected from "implement landing page and auth" to reflect that it contains Features 01–04.
+
+---
 
 ### Feature 04 — Database Schema (2026-07-30)
 

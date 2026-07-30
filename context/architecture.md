@@ -133,8 +133,9 @@
 | `app/`        | Pages and API routes only. No business logic.                                                          |
 | `agent/`      | All agent logic. Adzuna discovery, company research, matching, extraction. Nothing here touches React. |
 | `actions/`    | Server Actions for UI-triggered mutations only. Profile save, profile update.                          |
-| `components/` | UI only. No data fetching logic. No direct DB calls.                                                   |
+| `components/` | UI only. No data fetching logic. No direct DB calls. `components/analytics/` is the one exception in spirit — those components render `null` and exist purely for side effects (identify, event capture); they still hold no data fetching or DB access. |
 | `lib/`        | Third party client initialisation and shared utilities only.                                           |
+| `db/`         | SQL schema. `schema.sql` is the source of truth; `types/` mirrors it.                                  |
 | `types/`      | TypeScript types shared across the project.                                                            |
 
 ---

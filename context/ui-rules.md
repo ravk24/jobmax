@@ -33,8 +33,12 @@ Three nav items: Dashboard, Find Jobs, Profile.
 
 - Active item: `color: #7C5CFC`, font-weight 500, 14px
 - Inactive item: `color: #4A5565`, font-weight 500, 14px
-- No underline — active state is color change only
 - Navbar always white background, full viewport width
+
+Two variants:
+
+- **Marketing navbar** (`Navbar.tsx`) — links plus a CTA button, no active state, no underline.
+- **App navbar** (`AppNavbar.tsx`) — icons beside each label, and the active item carries an **accent underline** as well as the colour change. Corrected 2026-07-30: this file previously said "no underline — active state is colour change only", which contradicted both `context/design/profile.png` and the app navbar in `public/dashboard.png`. Design assets win.
 
 ---
 
@@ -131,15 +135,20 @@ padding: 8px 16px
 ## Form Inputs
 
 ```
-background: #FFFFFF
+background: #F9FAFB   (surface-secondary)
 border: 1px solid #E7EAF3
 border-radius: 8px
+height: 40px
 padding: 8px 12px
 font-size: 14px
 color: #101828
 placeholder color: #99A1AF
 focus: ring-1 ring-accent border-accent
 ```
+
+Corrected 2026-07-30: this previously specified a white background. `context/design/profile.png` renders every control on `surface-secondary`, which is what separates a field from the white card it sits on. Inputs, selects and textareas all share this treatment — see `ui-registry.md § Form controls`.
+
+Field labels are uppercase and use the `field-label` utility in `globals.css`. Checkbox labels are the exception: sentence case, `text-xs`, `text-text-dark`.
 
 ---
 

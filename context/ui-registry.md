@@ -68,6 +68,54 @@ The 1% hover zoom sits on the base ring, so it applies to **every** button in th
 
 ---
 
+### Form controls (Input, Textarea, Select, Checkbox, Label)
+
+Files: `components/ui/{input,textarea,select,checkbox,label}.tsx`
+Last updated: 2026-07-30
+
+shadcn/ui primitives, customised to the JobMax system. shadcn's semantic vars are already mapped onto project tokens in `globals.css :root` (`--input` → `--color-border`, `--ring` → `--color-accent`), so the primitives inherit the palette; what changed is sizing and surface.
+
+| Property | Class |
+| --- | --- |
+| Height | `h-10` (shadcn ships `h-8` — too small for this design) |
+| Radius | `rounded-md` (8px) |
+| Surface | `bg-surface-secondary` — **not** white; this is what separates a field from the card |
+| Border | `border-border` |
+| Text | `text-sm leading-5 text-text-primary`, placeholder `text-text-muted` |
+| Focus | `focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent` |
+| Invalid | `aria-invalid:border-error aria-invalid:ring-1 aria-invalid:ring-error` |
+| Checkbox checked | `data-checked:border-accent data-checked:bg-accent data-checked:text-accent-foreground` |
+| Textarea min height | `min-h-[76px]` |
+
+**Pattern notes:**
+Every `dark:` variant shipped by shadcn was stripped — dark mode is deliberately inert in this project, and leaving them in implies a mode that never activates.
+Field labels use the **`field-label` utility** in `globals.css` (11px, uppercase, `tracking-wider`, `text-text-secondary`) rather than repeating six classes across three files. Checkbox labels do **not** use it — they are sentence case, `text-xs`, `text-text-dark`.
+Adding these did not touch `globals.css`; verified by diff. If shadcn is re-run, check that again — Feature 01 records `shadcn init` overwriting the token layer.
+
+---
+
+### AppNavbar
+
+File: `components/layout/AppNavbar.tsx`
+Last updated: 2026-07-30
+
+| Property | Class |
+| --- | --- |
+| Chrome | `h-16 border-b border-border bg-surface` — identical to `Navbar.tsx` |
+| Container | `mx-auto flex max-w-[1440px] items-center justify-between px-6` |
+| Item (base) | `flex h-16 items-center gap-2 border-b-2 px-1 text-sm leading-5 font-medium` |
+| Item (active) | `border-accent text-accent` |
+| Item (inactive) | `border-transparent text-text-dark hover:text-accent` |
+| Icon | `size-4 shrink-0` — lucide `LayoutGrid`, `Search`, `User` |
+
+**Pattern notes:**
+The authenticated counterpart to `Navbar.tsx`. `"use client"` for `usePathname`; active state matches the exact path or any child path.
+The underline is `border-b-2` on a **full-height** item so it lands on the header's own bottom border — a border on the text alone floats above it.
+Labels hide below `sm` and the icons carry the nav; the row would otherwise overflow at 430px.
+Logo is passed `href="/dashboard"`, per the Logo entry below.
+
+---
+
 ### Logo
 
 File: `components/layout/Logo.tsx`
@@ -348,6 +396,26 @@ All three render `null` — they exist only for their effects and have no markup
 `SignInTracker` reads `window.location` in an effect rather than calling `useSearchParams()` — the hook would opt the entire tree out of static rendering to read a value that is only needed after mount.
 **`hasSession` is a guard, not a convenience.** The sign-in marker is an ordinary query param, so any visitor can put `?signed_in=1` on any URL and fire the event. The tracker only captures when the server actually rendered a session; it strips the param either way.
 Both trackers guard against React StrictMode's development double-invoke with refs. Without that, every dev page load double-counts.
+
+---
+
+### Profile page components
+
+Files: `components/profile/{CompletionIndicator,ResumeUpload,ProfileForm,TagInput,WorkExperienceCard}.tsx`
+Last updated: 2026-07-30
+
+| Component | Notes |
+| --- | --- |
+| `CompletionIndicator` | Banner + SVG ring. Ring is `96px` with `10px` stroke, `-rotate-90` so it starts at 12 o'clock, progress via `strokeDasharray` / `strokeDashoffset`. Track `stroke-error/15`, fill `stroke-error`. Missing-field pills: `rounded-sm bg-error/10 text-error` uppercase |
+| `ResumeUpload` | Dropzone is `rounded-xl border border-dashed border-border-muted`; icon in a `size-10 rounded-full bg-accent-muted` circle |
+| `ProfileForm` | `"use client"`, local state only. Sections separated by `border-b border-border pb-8` + `pt-8`, never spacer divs. Two-column rows are `grid gap-4 sm:grid-cols-2` |
+| `TagInput` | Shared by Skills **and** Industries — build once. Enter is intercepted (`preventDefault`) so it adds a tag instead of submitting the form. Duplicates are ignored silently |
+| `WorkExperienceCard` | `fieldset` + `sr-only` legend. Checking "Currently working here" disables the end-date input **and** clears its value, so a stale date cannot survive |
+
+**Pattern notes:**
+Card surfaces reuse the project card recipe exactly (`rounded-2xl border border-border bg-surface p-6` + card shadow). The banner stays **white** despite the mock reading faintly pink — `ui-rules.md § Cards` forbids coloured card surfaces, and the red lives in the icon, pills and ring instead.
+The form omits the **Cover Letter Tone** dropdown that `build-plan.md` Feature 05 lists. The design does not show it and cover letter generation is in `project-overview.md`'s out-of-scope list. `profiles.cover_letter_tone` still exists in the schema, unused.
+Completion is **derived** via `calculateCompletion()` in `lib/profile.ts`, never stored — see `progress-tracker.md`.
 
 ---
 

@@ -52,9 +52,9 @@ The pages below are **design references, not working screens.** They are what Ph
 | | |
 | --- | --- |
 | **Dashboard** (Feature 14) | **Find Jobs** (Feature 09) |
-| ![Dashboard](public/dashboard.png) | ![Find Jobs](public/find-jobs.png) |
+| ![Dashboard](context/design/dashboard.png) | ![Find Jobs](context/design/find-jobs.png) |
 | **Job Details** (Feature 12) | **Profile** (Feature 05) |
-| ![Job details](public/job-details.png) | ![Profile](public/profile.png) |
+| ![Job details](context/design/job-details.png) | ![Profile](context/design/profile.png) |
 
 ---
 

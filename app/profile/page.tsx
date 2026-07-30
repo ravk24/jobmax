@@ -1,9 +1,62 @@
 import { redirect } from "next/navigation";
 
-import { LogoutButton } from "@/components/auth/LogoutButton";
-import { Logo } from "@/components/layout/Logo";
+import { AppNavbar } from "@/components/layout/AppNavbar";
+import { CompletionIndicator } from "@/components/profile/CompletionIndicator";
+import { ProfileForm } from "@/components/profile/ProfileForm";
+import { ResumeUpload } from "@/components/profile/ResumeUpload";
 import { LOGIN_ROUTE } from "@/lib/auth";
 import { getCurrentUser } from "@/lib/insforge-server";
+import { calculateCompletion } from "@/lib/profile";
+import type { Profile } from "@/types";
+
+// Feature 05 is UI only — build-plan.md specifies mock data and no save logic.
+// Feature 06 replaces this with a real read and a Server Action. Typed as
+// Profile so it cannot drift from db/schema.sql.
+// phone, location and education are deliberately null: they are the three
+// missing fields the design shows, and they produce the 70% in the banner.
+const MOCK_PROFILE: Profile = {
+  id: "00000000-0000-0000-0000-000000000000",
+  full_name: "Faizan Ali",
+  email: "faizan@jsmastery.pro",
+  phone: null,
+  location: null,
+  current_title: "Frontend Engineer",
+  experience_level: "junior",
+  years_experience: 4,
+  skills: ["React", "TypeScript", "Next.js", "Tailwind CSS"],
+  industries: [],
+  work_experience: [
+    {
+      company: "Vercel",
+      title: "Frontend Engineer",
+      startDate: "2022-01",
+      endDate: null,
+      isCurrent: true,
+      responsibilities:
+        "Built Next.js features and optimized web vitals. Led a team of 3 developers.",
+    },
+  ],
+  // Partially filled, exactly as the design shows: degree and field present,
+  // institution and year blank — so EDUCATION still reads as missing.
+  education: {
+    degree: "High School",
+    field: "Computer Science",
+    institution: "",
+    graduationYear: 0,
+  },
+  job_titles_seeking: ["Frontend Engineer", "React Developer"],
+  remote_preference: "any",
+  preferred_locations: [],
+  salary_expectation: null,
+  cover_letter_tone: null,
+  linkedin_url: "https://linkedin.com/in/faizan",
+  portfolio_url: "https://github.com/jsmastery",
+  work_authorization: "citizen",
+  resume_pdf_url: null,
+  is_complete: false,
+  created_at: "2026-07-30T00:00:00.000Z",
+  updated_at: "2026-07-30T00:00:00.000Z",
+};
 
 export default async function ProfilePage() {
   const user = await getCurrentUser();
@@ -11,25 +64,20 @@ export default async function ProfilePage() {
     redirect(LOGIN_ROUTE);
   }
 
+  const { percentage, missingFields } = calculateCompletion(MOCK_PROFILE);
+
   return (
     <>
-      <header className="flex h-16 items-center justify-between border-b border-border bg-surface px-6">
-        <Logo />
-        <LogoutButton />
-      </header>
+      <AppNavbar />
 
-      <main className="flex-1 bg-background px-6 py-10">
-        <div className="mx-auto max-w-[1440px]">
-          <h1 className="text-2xl leading-tight font-bold tracking-tight text-text-primary">
-            Profile
-          </h1>
-
-          <div className="mt-6 rounded-2xl border border-border bg-surface p-6 shadow-[0px_1px_3px_rgba(0,0,0,0.1),0px_1px_2px_-1px_rgba(0,0,0,0.1)]">
-            <p className="text-xs leading-4 text-text-muted">Signed in as</p>
-            <p className="mt-1 text-sm leading-5 font-medium text-text-primary">
-              {user.email}
-            </p>
-          </div>
+      <main className="flex-1 bg-background px-6 py-8">
+        <div className="mx-auto flex max-w-[940px] flex-col gap-6">
+          <CompletionIndicator
+            percentage={percentage}
+            missingFields={missingFields}
+          />
+          <ResumeUpload />
+          <ProfileForm profile={MOCK_PROFILE} />
         </div>
       </main>
     </>
