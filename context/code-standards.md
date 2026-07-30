@@ -42,7 +42,7 @@ The AI agent on this project operates as a senior engineer. This means:
   - Event listeners
   - Third party client-only libraries (PostHog browser side)
 - Never add `"use client"` to layout files unless absolutely required
-- Data fetching happens in Server Components — never fetch in Client Components directly
+- Data fetching happens in Server Components — never fetch in Client Components directly. **One sanctioned exception:** a client component may `fetch()` an own-origin API route when it is performing a *mutation* that a Server Action cannot carry — today that means file upload only, because Server Action bodies are capped at 1MB (`ResumeUpload` → `POST /api/resume/upload`). Reads are never fetched from a client component. Any such call needs its own try/catch and a user-visible error
 - Route handlers live in `app/api/` — never put business logic directly in route handlers
 - Server Actions live in `actions/` — never define Server Actions inline in components
 - **Middleware is called Proxy in Next.js 16** — the file is `proxy.ts` at the project root exporting `proxy()`. `middleware.ts` is deprecated; never create one.
@@ -160,6 +160,9 @@ export async function saveProfile(formData: ProfileFormData) {
 - Every Server Action returns `{ success: boolean, error?: string }`
 - Always call `revalidatePath` after mutations that affect page data
 - Never throw from Server Actions — always return the error
+- Always authenticate inside the action. A Server Action compiles to a POST endpoint anyone can call; rendering the form on a protected page is not a security boundary
+- Validate input with zod before writing. The client is untrusted, and a bad enum otherwise surfaces as an opaque Postgres CHECK error rather than something a user can act on
+- **The caller needs its own try/catch too.** The action returns its errors rather than throwing, but the *call* can still reject — dropped connection, restarted server, 500 before the body runs. Without it the status never updates and the button stays stuck pending
 
 ---
 
@@ -240,14 +243,18 @@ The events the dashboard charts are built on. Each belongs to a feature that has
 | -------------------- | ------------------------------------------ | -------------------------- | ------------------ |
 | `job_search_started` | Find Jobs button clicked                   | userId, jobTitle, location | pending Feature 10 |
 | `job_found`          | Each job discovered and saved              | userId, source, matchScore | pending Feature 10 |
-| `profile_completed`  | User saves complete profile for first time | userId                     | pending Feature 06 |
+| `profile_completed`  | User saves complete profile for first time | userId                     | built Feature 06   |
 | `company_researched` | Company research dossier generated         | userId, jobId, company     | pending Feature 13 |
 
 `job_found` powers the Jobs Found Over Time and Match Score Distribution dashboard charts.
 `company_researched` powers the Company Research Activity dashboard chart.
 Always fire these with correct properties.
 
-These four are captured **server-side** from the API route that performs the work, using `createPostHogServer()` from `lib/posthog-server.ts`. Always `await posthog.shutdown()` in the same function or the event is lost. Always include `userId` as a property.
+These four are captured **server-side** using `createPostHogServer()` from `lib/posthog-server.ts` — from the API route that performs the work, or from the Server Action in `profile_completed`'s case. Always `await posthog.shutdown()` in the same function or the event is lost. Always include `userId` as a property.
+
+Server-side events do **not** join the `AnalyticsEvent` union in `lib/posthog-client.ts` — that union types the browser capture surface only. Wrap the capture in its own try/catch: `createPostHogServer()` throws when the key is unset, and analytics must never fail the write it is measuring.
+
+`profile_completed` fires on the save where `is_complete` transitions from false to true, which is why `saveProfile` reads the existing flag before upserting. Re-saving an already-complete profile does not re-fire it.
 
 ### Auth lifecycle events
 

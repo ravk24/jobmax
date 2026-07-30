@@ -159,55 +159,78 @@ const { accessToken, error } = await updateSession({
 
 ### DB Queries
 
+**The query builder hangs off `.database`, not off the client.** `InsForgeClient` exposes `readonly database` and `readonly storage`; `insforge.from(...)` does not exist. An earlier version of this file taught `insforge.from("jobs")` — corrected in Feature 06, which was the first code to actually write to the database and would have failed on its first call.
+
 ```typescript
 // Read
-const { data, error } = await insforge
+const { data, error } = await insforge.database
   .from("jobs")
   .select("*")
   .eq("user_id", user.id)
   .order("found_at", { ascending: false });
 
 // Insert
-const { data, error } = await insforge
+const { data, error } = await insforge.database
   .from("jobs")
   .insert({ user_id: user.id, title, company, match_score })
   .select()
   .single();
 
 // Update
-const { error } = await insforge
+const { error } = await insforge.database
   .from("jobs")
   .update({ company_research: dossier })
   .eq("id", jobId)
   .eq("user_id", user.id); // always scope to user
+
+// Upsert — insert if missing, update if present
+const { error } = await insforge.database
+  .from("profiles")
+  .upsert({ id: user.id, email: user.email, full_name }, { onConflict: "id" });
 ```
+
+`Database.from()` returns a real postgrest-js `PostgrestQueryBuilder`, so the full PostgREST surface is available — including `.upsert()`, `.maybeSingle()`, `.range()` and `.or()` — even though the InsForge MCP docs list only insert/update/delete/select.
+
+**`.upsert()` only writes the columns present in the payload.** PostgREST's merge-duplicates emits `ON CONFLICT DO UPDATE SET` for the supplied keys and leaves every other column untouched. Feature 06 relies on this: the profile form and the resume upload both upsert the same `profiles` row, and neither clobbers the other because each omits the columns it does not own.
 
 **Rules:**
 
+- Always go through `insforge.database.from(...)` — never `insforge.from(...)`
 - Always scope queries to `user_id` — never query without user filter
 - Always handle the `error` return — never assume success
-- Use `.single()` when expecting exactly one row
+- Use `.single()` when expecting exactly one row, `.maybeSingle()` when zero rows is a normal case
+- Omit a column from an upsert payload when another write path owns it
 
 ---
 
 ### Storage
 
+**`upload()` takes two arguments, not three.** The signature is `upload(path: string, file: File | Blob)` — there is no options object, so there is no `contentType` and no `upsert` flag. Overwrite is implicit PUT semantics: uploading to an existing key replaces the object in place, which is exactly the behaviour the one-active-resume-per-user rule needs. An earlier version of this file taught a three-argument call; corrected in Feature 06.
+
 ```typescript
-// Upload file
 const { data, error } = await insforge.storage
   .from("resumes")
-  .upload(`${userId}/resume.pdf`, fileBuffer, {
-    contentType: "application/pdf",
-    upsert: true, // overwrites existing file
-  });
+  .upload(`${userId}/resume.pdf`, file);
 
-// Get public URL
-const { data } = insforge.storage
-  .from("resumes")
-  .getPublicUrl(`${userId}/resume.pdf`);
-
-const url = data.publicUrl;
+// data.url is the URL to persist — not getPublicUrl()
+await insforge.database
+  .from("profiles")
+  .upsert({ id: userId, email, resume_pdf_url: data.url }, { onConflict: "id" });
 ```
+
+**The `resumes` bucket is private** (`isPublic: false`). `getPublicUrl()` still exists on the SDK, but on a private bucket it returns a URL that resolves for nobody — use the `data.url` the upload response already gives you, and read it back with an authenticated server client.
+
+**`resume_pdf_url` is a server-side handle, not something a browser can open.** The session lives in httpOnly cookies on *our* origin (`client_type=server`), so the browser holds no credentials for the InsForge domain and a plain `<a href={resume_pdf_url}>` fails. To give someone a clickable link, mint a signed URL server-side:
+
+```typescript
+const { data } = await insforge.storage
+  .from("resumes")
+  .createSignedUrl(`${userId}/resume.pdf`, 60 * 60);
+
+// data.signedUrl — credential-free, time-limited, safe to put in href
+```
+
+Authorization is enforced when the URL is minted, so the result is a capability scoped to that one object until it expires. `/profile` mints one per render when `resume_pdf_url` is set, and `ResumeUpload` calls `router.refresh()` after an upload — `revalidatePath()` in a route handler invalidates the cache but does not re-render a page that is already open.
 
 **Storage paths:**
 
@@ -215,9 +238,10 @@ const url = data.publicUrl;
 
 **Rules:**
 
-- Always use `upsert: true` for base resume uploads — overwrites existing file
-- Always save the public URL back to the DB after upload
-- Never write files to disk — always upload buffer directly to storage
+- `upload(path, file)` — two arguments; overwrite is automatic, never pass an options object
+- Save `data.url` from the upload response back to the DB — never `getPublicUrl()` on a private bucket
+- Upload with `.upsert()`, not `.update()` — the profile row may not exist yet, and an update matching zero rows drops the URL silently
+- Never write files to disk — always upload the File or Blob directly to storage
 
 ---
 

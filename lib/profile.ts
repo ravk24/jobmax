@@ -1,9 +1,14 @@
-import type { Profile } from "@/types";
+import type { Profile, ProfileInput } from "@/types";
 
 // architecture.md describes work_experience as "Array of up to 3 roles", and
 // build-plan.md Feature 05 repeats it. jsonb cannot enforce this, so the form
-// does — and Feature 06 must re-check it server-side before writing.
+// caps it and saveProfile re-checks it — a client-side cap is not a constraint.
 export const MAX_WORK_EXPERIENCE = 3;
+
+// The resume card advertises this limit, the upload route enforces it, and the
+// browser checks it first for fast feedback. One number so the three cannot
+// disagree.
+export const MAX_RESUME_BYTES = 5 * 1024 * 1024;
 
 // Completion is derived, never stored. `profiles` deliberately has no column for
 // the percentage or the missing-field list: everything needed to compute them is
@@ -44,6 +49,68 @@ function isEducationComplete(profile: Profile): boolean {
     education.degree.trim().length > 0 &&
     education.institution.trim().length > 0
   );
+}
+
+// A signed-in user with no profiles row yet — the state every user is in until
+// their first save. The row does not exist, so the timestamps describe this
+// unsaved draft rather than anything in the database; nothing renders them.
+export function blankProfile(user: {
+  id: string;
+  email: string;
+}): Profile {
+  const now = new Date().toISOString();
+
+  return {
+    id: user.id,
+    full_name: null,
+    email: user.email,
+    phone: null,
+    location: null,
+    current_title: null,
+    experience_level: null,
+    years_experience: null,
+    skills: [],
+    industries: [],
+    work_experience: [],
+    education: null,
+    job_titles_seeking: [],
+    remote_preference: null,
+    preferred_locations: [],
+    salary_expectation: null,
+    cover_letter_tone: null,
+    linkedin_url: null,
+    portfolio_url: null,
+    work_authorization: null,
+    resume_pdf_url: null,
+    is_complete: false,
+    created_at: now,
+    updated_at: now,
+  };
+}
+
+// The form holds a whole Profile; saveProfile accepts only the editable subset.
+// Listing the keys explicitly rather than deleting the others means a new
+// column is a compile error here until someone decides who owns it.
+export function toProfileInput(profile: Profile): ProfileInput {
+  return {
+    full_name: profile.full_name,
+    phone: profile.phone,
+    location: profile.location,
+    current_title: profile.current_title,
+    experience_level: profile.experience_level,
+    years_experience: profile.years_experience,
+    skills: profile.skills,
+    industries: profile.industries,
+    work_experience: profile.work_experience,
+    education: profile.education,
+    job_titles_seeking: profile.job_titles_seeking,
+    remote_preference: profile.remote_preference,
+    preferred_locations: profile.preferred_locations,
+    salary_expectation: profile.salary_expectation,
+    linkedin_url: profile.linkedin_url,
+    portfolio_url: profile.portfolio_url,
+    work_authorization: profile.work_authorization,
+  };
 }
 
 export function calculateCompletion(profile: Profile): CompletionResult {

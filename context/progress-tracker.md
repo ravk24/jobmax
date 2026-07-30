@@ -7,9 +7,9 @@ Update this file after every completed feature. Any AI agent reading this should
 ## Current Status
 
 **Phase:** Phase 2 — Profile Page
-**Last completed:** 05 Profile Page — Full UI (2026-07-30). Phase 1 is complete apart from the two outstanding Feature 02 clicks.
-**In progress:** 02 Auth — **working end to end for Google.** Anon key is in `.env.local`, the OAuth round trip completes, and post-login lands on `/profile`. Both original blockers are resolved. Remaining: confirm GitHub sign-in and sign-out.
-**Next:** 06 Profile Save Logic. Still outstanding from 02: click through GitHub sign-in and the Log out button (which also verifies `user_logged_out`), then tick 02.
+**Last completed:** 05 Profile Page — Full UI (2026-07-30).
+**In progress:** 06 Profile Save Logic — **code complete, runtime verification outstanding.** Static checks pass and the database half is proven; the signed-in click-through has not been done. 02 Auth is still open on GitHub sign-in and the Log out click.
+**Next:** finish the Feature 06 walkthrough (see § Feature 06), then 07 AI Profile Extraction from Resume.
 
 ---
 
@@ -25,7 +25,7 @@ Update this file after every completed feature. Any AI agent reading this should
 ### Phase 2 — Profile Page
 
 - [x] 05 Profile Page — Full UI (mock data, no save logic — Feature 06 wires it)
-- [ ] 06 Profile Save Logic
+- [~] 06 Profile Save Logic — built; awaiting the signed-in click-through
 - [ ] 07 AI Profile Extraction from Resume
 - [ ] 08 Resume PDF Generation from Profile
 
@@ -143,7 +143,7 @@ Fix: build the redirect response *first* (targeting `LOGIN_ROUTE` as a placehold
 
 ### Feature 05 — Profile Page UI (2026-07-30)
 
-**Mock data, no persistence.** `MOCK_PROFILE` in `app/profile/page.tsx` is typed as `Profile` so it cannot drift from `db/schema.sql`. Feature 06 replaces it with a real read plus a Server Action; the Save button currently submits nothing.
+**Mock data, no persistence.** ~~`MOCK_PROFILE` in `app/profile/page.tsx` is typed as `Profile` so it cannot drift from `db/schema.sql`.~~ **Superseded by Feature 06** — `MOCK_PROFILE` was deleted and the page now reads the real row. Kept here because the typed-mock technique is worth reusing for Features 09, 12 and 14, which all build UI on mock data first.
 
 **`PROTECTED_ROUTES` in `lib/auth.ts` is not what protects routes.** `proxy.ts` carries its own hardcoded `config.matcher`, and Next requires a literal array there — it cannot be built from an imported constant. The two lists duplicate each other and can drift. `isProtectedRoute()` is currently unused. Worth reconciling before more protected routes are added.
 
@@ -162,6 +162,62 @@ Fix: build the redirect response *first* (targeting `LOGIN_ROUTE` as a placehold
 - **The signed-in user's email is now used.** The page fetched the session, used it only for the redirect guard, then rendered a hardcoded `faizan@jsmastery.pro` in the disabled Email field — a regression, since the previous placeholder page showed the real address. Only email is taken from the session; the rest stays mock until Feature 06.
 
 **Verification required temporarily bypassing auth** — `/profile` is protected by `proxy.ts`, so a headless browser with no session only ever sees `/login`. The page guard *and* the proxy matcher were both patched, then reverted; `git diff` confirmed both files identical to `HEAD` and `/profile` returning 307 again afterwards.
+
+### Feature 06 — Profile Save Logic (2026-07-30)
+
+**`library-docs.md` documented an InsForge API that does not exist.** It taught `insforge.from("jobs").select()`. The query builder hangs off `insforge.database.from(...)` — `InsForgeClient` exposes `readonly database` and `readonly storage`. Feature 06 was the first code to write to the database, so this would have failed on its first call. Corrected in `library-docs.md`; expect it back if that file is ever regenerated from the InsForge boilerplate.
+
+**`Database.from()` returns a real postgrest-js `PostgrestQueryBuilder`,** so `.upsert()`, `.maybeSingle()`, `.range()` and `.or()` are all available even though the InsForge MCP docs list only insert/update/delete/select. `.upsert(row, { onConflict: "id" })` is what makes "create the row on first save" a single call instead of a read-then-branch.
+
+**Two write paths share one row, and neither clobbers the other.** The form save omits `resume_pdf_url`; the upload route sends only `id`, `email` and `resume_pdf_url`. PostgREST's merge-duplicates emits `ON CONFLICT DO UPDATE SET` for the supplied keys only, leaving every other column untouched. **Verified directly against the database** before the UI existed: an upsert carrying `resume_pdf_url`, followed by a second upsert carrying only form fields, left the URL intact. This is the assumption the whole design rests on — re-test it if the InsForge PostgREST layer is ever upgraded.
+
+**Storage `upload()` takes two arguments, not three.** `upload(path, file: File | Blob)`. There is no options object, so no `contentType` and no `upsert` flag — overwrite is implicit PUT semantics. `library-docs.md` taught the three-argument form.
+
+**The `resumes` bucket is private, so `getPublicUrl()` is the wrong call** — it returns a URL that resolves for nobody. `resume_pdf_url` stores the `data.url` the upload response already returns, read back with an authenticated server client. Features 07 and 08 consume it that way.
+
+**Resume upload is an API route, not a Server Action.** Server Action bodies are capped at **1MB** by default and the card advertises 5MB; route handlers have no cap. Raising `serverActions.bodySizeLimit` was rejected because it would apply to every action in the app, including a form save that only ever carries a few KB. `proxy.ts` does not match `/api/*`, so the route calls `getCurrentUser()` itself.
+
+**The upload route upserts rather than updates.** Someone can upload before ever saving the form; an `.update()` against a row that does not exist matches zero rows and drops the URL silently, with no error to catch.
+
+**`ProfileInput` is a second shape, deliberately.** `Profile` is the row shape the page reads and the form holds; `ProfileInput` is `Omit<Profile, id | email | cover_letter_tone | resume_pdf_url | is_complete | created_at | updated_at>` and is the only thing `saveProfile` accepts. A Server Action is a public POST endpoint, so the client can never supply its own id, email or completion flag. `toProfileInput()` in `lib/profile.ts` lists the keys explicitly, so a new column is a compile error until someone decides who owns it.
+
+**`zod` was on the approved list in `code-standards.md` but had never been installed.** Now at v4 — note the v4 API differs from v3 in places (`z.email()` replaces `z.string().email()`), which matters for Features 07/10/13 parsing GPT-4o JSON.
+
+**Completion stayed derived.** `is_complete` is the one derived value that persists, because it is a real column. The percentage and the missing-field list are still computed by `calculateCompletion()` on every render and stored nowhere, per the closed backlog decision.
+
+**`profile_completed` fires on the false→true transition only,** which is why `saveProfile` reads the existing `is_complete` before upserting. It is captured server-side and does **not** join the `AnalyticsEvent` union — that union types the browser surface. The capture is wrapped in its own try/catch: `createPostHogServer()` throws when the key is unset, and analytics must never fail the write it measures.
+
+**An API route left out of the `proxy.ts` matcher 401s the moment its access token expires — found the hard way.** The first real `POST /api/resume/upload` returned 401 while `/profile` rendered 200 either side of it. `updateSession()` in the proxy is the only thing that refreshes an expired token, and the matcher covered only pages, so protected pages silently refreshed while the API route saw a stale token. The dev log made it unmistakable: the `GET /profile` sitting between the failed and successful upload took `proxy.ts: 456ms` against a usual 8–12ms — a real refresh — after which the retry succeeded.
+
+Fixed by adding `/api/resume/:path*` to the matcher and giving `proxy.ts` a `rejectRequest()` that returns **401 JSON for `/api/*`** instead of a 307 to `/login` — a redirect answers a `fetch()` with HTML and the client reports a JSON parse error instead of the real problem. **`/api/agent/*` will need the same treatment in Features 10 and 13.** `/api/auth/*` stays out of the matcher: those routes establish the session and must be reachable without one.
+
+**`type="url"` silently blocked the entire form.** Two saves appeared to do nothing — and the server log showed no `POST` at all, so the failure was in the browser before any request. `linkedin_url` and `portfolio_url` render as `type="url"`, which requires an absolute URL; typing `linkedin.com/in/you` makes the browser refuse to submit and fire **no submit event**, so the `onSubmit` handler never runs. No request, no error, no clue. Both columns are plain `text` with no constraint and the server accepts any string, so the browser was enforcing a rule the application does not have. The form now carries `noValidate` — validation belongs to the server, which names the field it rejected. **Watch for this on any future form using `type="url"`, `type="email"`, `required` or `pattern`:** native validation blocks submission silently, and the tooltip is easy to miss on a long page.
+
+**"No row yet" and "the read failed" must never collapse into one answer.** Both looked identical to a caller returning `null`, and the caller's natural response — render an empty form — turns a transient database blip into silent data loss the moment the user saves over their own profile. `readProfile()` (formerly `getProfileRow`) now returns a discriminated `{ status: "found" | "empty" | "error" }`; a row that exists but fails to parse counts as `error`, not `empty`. `/profile` renders `ProfileLoadError` **instead of** the form on error — never alongside it, since an empty form is exactly the invitation that causes the loss. This was not hypothetical: the `invalid input syntax for type uuid: "undefined"` window did the first half of it, and only an already-empty row stopped it mattering.
+
+**A Server Action returning its errors is not the same as the call not throwing.** `saveProfile` never throws, but the *call* can reject — a dropped connection, a restarted dev server, a 500 before the action body runs. `handleSubmit` originally awaited it bare, so a rejection meant `setStatus` never ran and the button sat disabled on "Saving…" with nothing to explain it. Found when a save appeared to do nothing and the server log showed no `POST` at all. Every Server Action call from a client component needs its own try/catch on top of the action's internal one.
+
+**Reads are validated too, and the two postures are deliberately opposite.** `lib/profile-schema.ts` holds both schemas. Writes are **strict** — input arrives from a public POST endpoint and a bad enum would otherwise surface as an opaque Postgres CHECK error. Reads are **lenient and self-repairing**: `from()` is typed `PostgrestQueryBuilder<any, …>`, so a row arrives as `any` and annotating the return type would be an unchecked cast over data the database does not constrain. Every field in `profileRowSchema` carries a `.catch()` fallback, because a schema that *rejects* is dangerous here — falling back to a blank form would silently overwrite the real row on the next save. `id` and `email` are overwritten from the session rather than trusted, as they are the two values a blank fallback would corrupt.
+
+**Roles written before Feature 05 have no `id`,** and React keys plus every element id in `WorkExperienceCard` derive from it. The read schema backfills `legacy-role-{index}` — positional, so it is stable across renders. `crypto.randomUUID()` would differ on every render and break hydration, the same trap Feature 05 hit.
+
+**Validation limits are documented, not incidental.** `MAX_SHORT_TEXT` 500, `MAX_RESPONSIBILITIES` 5000, `MAX_TAG` 100, `MAX_TAGS` 50, `MAX_YEARS_EXPERIENCE` 80, all in `lib/profile-schema.ts`. Postgres `text` is unbounded, so these are the only limits that exist. They are sized to stop a megabyte of junk, not to police how someone writes about their job — an earlier pass capped responsibilities at 2000, which a normal three-role history could plausibly exceed.
+
+**A validation failure names the field.** `describeValidationIssue()` turns the first zod issue into copy like "Role 2 responsibilities is too long." The first pass returned "Some fields are not valid.", which is useless when the only way to trigger it is a length cap nobody can see.
+
+**A failed API refresh no longer signs the user out.** `rejectApiRequest()` returns 401 JSON **without** `clearAuthCookies()`. A refresh can fail for reasons unrelated to the session being dead — an InsForge blip, a rotation race — and destroying the whole session because one background upload picked a bad moment is wildly disproportionate. The session survives and the next page navigation decides its fate, where a redirect to `/login` is the honest answer. The page path still clears, unchanged.
+
+**"Click to upload" now clicks.** The copy had promised it since Feature 05 while only the Select Resume button opened the picker. The dropzone surface carries `onClick` with `cursor-pointer` — and deliberately **no** `role`/`tabIndex`, since the real button inside it already serves keyboard and screen reader users; adding them would nest one button inside another. The button and the resume link both `stopPropagation()`, or clicking either would also open the picker.
+
+**The uploaded resume is a link, and it has to be a signed one.** `resume_pdf_url` points into a private bucket, and the browser holds no InsForge credentials — `client_type=server` deliberately keeps the session on our own origin — so a plain anchor to it fails. `/profile` mints a `createSignedUrl()` per render when `resume_pdf_url` is set (1h TTL, credential-free, authorised at mint time) and `ResumeUpload` renders the filename as an accent link opening in a new tab. `router.refresh()` runs after a successful upload: `revalidatePath()` in a route handler invalidates the cache but does not re-render a page that is already open, so without it a just-uploaded resume has no link until a manual reload.
+
+**The link text is the storage key, not the original filename.** Immediately after upload it reads the real name from client state (`CV_Ravi_Kant.pdf`); after a reload it reads `resume.pdf`, because the object is always stored at `{user_id}/resume.pdf` and the original filename is persisted nowhere. Add a column if that ever matters.
+
+**Verified:** `npx tsc --noEmit`, `npm run lint` and `npm run build` all clean, with `/api/resume/upload` registered in the build output. Database-side, before any UI existed: the upsert column-preservation behaviour above, and the `profiles_set_updated_at` trigger advancing `updated_at` with no caller setting it.
+
+Through the running app, signed in: the **upload-before-first-save** path creates the row via the route's upsert rather than dropping the URL, and `resume_pdf_url` holds the private-bucket object URL (`/api/storage/buckets/resumes/objects/{user_id}%2Fresume.pdf?v=…`) exactly as intended.
+
+**Still unverified.** A form save carrying real data, reload persistence, the banner recalculating, `resume_pdf_url` surviving a subsequent form save (the assumption the two-write-path design rests on — proven at the SQL level, not yet through the app), PDF and 5MB rejection, and `profile_completed` reaching PostHog.
 
 ---
 

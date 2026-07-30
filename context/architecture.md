@@ -59,6 +59,7 @@
 │       │   ├── find/route.ts              → Trigger Adzuna job discovery
 │       │   └── research/route.ts          → Trigger company research agent
 │       ├── resume/
+│       │   ├── upload/route.ts            → Upload resume PDF to Storage, save resume_pdf_url
 │       │   ├── generate/route.ts          → Generate base resume PDF from profile
 │       │   └── extract/route.ts           → Extract profile data from uploaded resume PDF
 ├── agent/
@@ -96,8 +97,10 @@
 │   ├── profile/
 │   │   ├── ProfileForm.tsx
 │   │   ├── ResumeUpload.tsx
-│   │   ├── ResumePreview.tsx
-│   │   └── CompletionIndicator.tsx
+│   │   ├── CompletionIndicator.tsx
+│   │   ├── ProfileLoadError.tsx           → Shown instead of the form when the row cannot be read
+│   │   ├── TagInput.tsx                   → Shared by Skills and Industries
+│   │   └── WorkExperienceCard.tsx
 │   ├── find-jobs/
 │   │   ├── SearchControls.tsx
 │   │   ├── JobsTable.tsx
@@ -112,6 +115,8 @@
 ├── proxy.ts                                → Session check on protected routes (Next 16 Proxy)
 ├── lib/
 │   ├── auth.ts                            → OAuth providers, route constants, env accessor
+│   ├── profile.ts                         → Completion rules, caps, blankProfile (client-safe)
+│   ├── profile-schema.ts                  → zod write + read schemas (server only — keeps zod out of the client bundle)
 │   ├── insforge-client.ts                 → InsForge browser client instance
 │   ├── insforge-server.ts                 → InsForge server client + getCurrentUser()
 │   ├── browserbase.ts                     → Browserbase session creation + management
@@ -207,6 +212,10 @@ New PDF uploaded to InsForge Storage
         ↓
 URL saved to profiles table
 ```
+
+Resume upload is the one UI-triggered mutation that is **not** a Server Action. Server Action request bodies are capped at 1MB by default (`serverActions.bodySizeLimit`) and the resume card advertises 5MB; route handlers carry no such cap.
+
+**Authenticated API routes must be listed in the `proxy.ts` matcher.** `updateSession()` is the only thing that refreshes an expired access token, so a route left out of the matcher returns 401 as soon as the token ages out, while every protected page silently refreshes and keeps working — an intermittent failure that looks like a broken session. `/api/resume/:path*` is matched for this reason; `/api/agent/*` will need the same when Features 10 and 13 land. `/api/auth/*` stays out: those routes establish the session and must be reachable without one. Route handlers still call `getCurrentUser()` themselves — the proxy refreshes, it does not authorise.
 
 ---
 

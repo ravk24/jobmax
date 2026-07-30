@@ -49,3 +49,5 @@ posthog-setup-report.md
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+docs

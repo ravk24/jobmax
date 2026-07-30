@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { Plus } from "lucide-react";
 
-import { MAX_WORK_EXPERIENCE } from "@/lib/profile";
+import { saveProfile } from "@/actions/profile";
+import { MAX_WORK_EXPERIENCE, toProfileInput } from "@/lib/profile";
 import { TagInput } from "@/components/profile/TagInput";
 import { WorkExperienceCard } from "@/components/profile/WorkExperienceCard";
 import { Button } from "@/components/ui/button";
@@ -64,20 +65,50 @@ const emptyRole = (): WorkExperience => ({
 const SECTION = "border-b border-border pb-8";
 const GRID = "mt-4 grid gap-4 sm:grid-cols-2";
 
+// Comma-separated in the UI, string[] in the database.
+const listValue = (values: string[] | null) => (values ?? []).join(", ");
+const parseList = (value: string) =>
+  value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
 type Props = {
   profile: Profile;
 };
 
+type SaveStatus = { kind: "success" | "error"; message: string };
+
 export function ProfileForm({ profile: initialProfile }: Props) {
   const [profile, setProfile] = useState<Profile>(initialProfile);
+  const [status, setStatus] = useState<SaveStatus | null>(null);
+  const [isSaving, startSaving] = useTransition();
 
-  const set = <K extends keyof Profile>(key: K, value: Profile[K]) =>
+  // These two inputs keep their own raw text. Driving value from
+  // listValue(parseList(text)) round-trips every keystroke through an array,
+  // and parseList drops empty entries — so the moment you type the comma in
+  // "React, Vue" it is parsed away and re-rendered without it. The comma can
+  // never be typed, which makes a second entry impossible. The text is what the
+  // user sees; the array is what gets saved.
+  const [jobTitlesText, setJobTitlesText] = useState(() =>
+    listValue(initialProfile.job_titles_seeking),
+  );
+  const [locationsText, setLocationsText] = useState(() =>
+    listValue(initialProfile.preferred_locations),
+  );
+
+  // "Profile saved." must not survive the next keystroke — the message would go
+  // on claiming the form matches the database while the user edits away from it.
+  const set = <K extends keyof Profile>(key: K, value: Profile[K]) => {
+    setStatus(null);
     setProfile((current) => ({ ...current, [key]: value }));
+  };
 
   const setEducation = <K extends keyof Education>(
     key: K,
     value: Education[K],
-  ) =>
+  ) => {
+    setStatus(null);
     setProfile((current) => ({
       ...current,
       education: {
@@ -89,6 +120,7 @@ export function ProfileForm({ profile: initialProfile }: Props) {
         [key]: value,
       },
     }));
+  };
 
   const roles = profile.work_experience ?? [];
 
@@ -98,18 +130,47 @@ export function ProfileForm({ profile: initialProfile }: Props) {
       roles.map((entry, i) => (i === index ? role : entry)),
     );
 
-  // Comma-separated in the UI, string[] in the database.
-  const listValue = (values: string[] | null) => (values ?? []).join(", ");
-  const parseList = (value: string) =>
-    value
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter(Boolean);
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setStatus(null);
+
+    startSaving(async () => {
+      // saveProfile returns its errors rather than throwing, but the call
+      // itself can still reject — a dropped connection, a restarted server, a
+      // 500 before the action runs. Without this the status line never updates
+      // and the button stays disabled on "Saving…" with nothing to explain it.
+      try {
+        const result = await saveProfile(toProfileInput(profile));
+        setStatus(
+          result.success
+            ? { kind: "success", message: "Profile saved." }
+            : {
+                kind: "error",
+                message: result.error ?? "Could not save your profile.",
+              },
+        );
+      } catch (error) {
+        console.error("[components/profile/ProfileForm]", error);
+        setStatus({
+          kind: "error",
+          message: "Could not reach the server. Please try again.",
+        });
+      }
+    });
+  };
 
   return (
     <form
+      // The LinkedIn and Portfolio fields are type="url", which the browser
+      // reads as "must be an absolute URL". Typing linkedin.com/in/you — the
+      // obvious thing to type — makes it refuse to submit and fire no submit
+      // event at all, so the click produces silence: no request, no error, no
+      // handler. Those columns are plain text with no constraint, so the
+      // browser was enforcing a rule the application does not have. Validation
+      // belongs to the server, which names the field it rejected.
+      noValidate
       className="rounded-2xl border border-border bg-surface p-6 shadow-[0px_1px_3px_rgba(0,0,0,0.1),0px_1px_2px_-1px_rgba(0,0,0,0.1)]"
-      onSubmit={(event) => event.preventDefault()}
+      onSubmit={handleSubmit}
     >
       <div className="border-b border-border pb-5">
         <h2 className="text-base leading-6 font-semibold text-text-primary">
@@ -452,11 +513,12 @@ export function ProfileForm({ profile: initialProfile }: Props) {
           <Input
             id="job_titles_seeking"
             className="mt-2"
-            value={listValue(profile.job_titles_seeking)}
+            value={jobTitlesText}
             placeholder="E.g. Frontend Engineer, React Developer"
-            onChange={(event) =>
-              set("job_titles_seeking", parseList(event.target.value))
-            }
+            onChange={(event) => {
+              setJobTitlesText(event.target.value);
+              set("job_titles_seeking", parseList(event.target.value));
+            }}
           />
         </div>
 
@@ -507,19 +569,30 @@ export function ProfileForm({ profile: initialProfile }: Props) {
           <Input
             id="preferred_locations"
             className="mt-2"
-            value={listValue(profile.preferred_locations)}
+            value={locationsText}
             placeholder="E.g. New York, London"
-            onChange={(event) =>
-              set("preferred_locations", parseList(event.target.value))
-            }
+            onChange={(event) => {
+              setLocationsText(event.target.value);
+              set("preferred_locations", parseList(event.target.value));
+            }}
           />
         </div>
       </section>
 
-      {/* Persistence lands in Feature 06 — this submits nothing today. */}
-      <Button type="submit" className="mt-8 w-full">
-        Save Profile
+      <Button type="submit" className="mt-8 w-full" disabled={isSaving}>
+        {isSaving ? "Saving…" : "Save Profile"}
       </Button>
+
+      {status ? (
+        <p
+          role="status"
+          className={`mt-3 text-center text-sm leading-5 ${
+            status.kind === "success" ? "text-success-dark" : "text-error"
+          }`}
+        >
+          {status.message}
+        </p>
+      ) : null}
     </form>
   );
 }

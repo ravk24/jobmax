@@ -108,7 +108,7 @@ Build the complete profile page UI with mock data. No save logic yet.
 
 ---
 
-### 06 Profile Save Logic
+### 06 Profile Save Logic — built 2026-07-30
 
 Wire profile form to InsForge DB.
 
@@ -121,6 +121,14 @@ Wire profile form to InsForge DB.
 - Completion percentage and missing fields calculated and saved
 - Form pre-fills with existing data on return visits
 - revalidatePath('/profile') called after save
+
+> **Built differently, deliberately — do not "fix" this back.** Three bullets above are superseded:
+>
+> - **Completion percentage and missing fields are calculated but never saved.** `profiles` has no column for either, by an explicit decision recorded before Feature 05: everything needed to compute them is already in the row, and a stored percentage goes stale the moment a field changes. Only `is_complete` persists, because it is a real column. `calculateCompletion()` in `lib/utils`-adjacent `lib/profile.ts` is the single definition of "complete".
+> - **There is no `upsert: true` option.** The SDK's `upload(path, file)` takes two arguments; overwrite is implicit PUT semantics. Passing an options object does nothing.
+> - **The upload is an API route, not part of the Server Action.** Server Action bodies are capped at 1MB by default and the card advertises 5MB, so the file goes to `POST /api/resume/upload`. Two write paths share the row and neither clobbers the other — each omits the columns it does not own.
+>
+> Also: the **Cover Letter Tone** dropdown listed in Feature 05 stays omitted, so `cover_letter_tone` is absent from every write payload. See `progress-tracker.md § Feature 06`.
 
 ---
 

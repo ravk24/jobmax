@@ -44,13 +44,36 @@ function redirectToLogin(req: NextRequest) {
   return response;
 }
 
+// An API caller wants a status code, not a login page: a 307 to /login answers
+// a fetch() with HTML, and the client reports a JSON parse failure instead of
+// the real problem. Matches the shape every route handler returns.
+//
+// It deliberately does NOT clear the auth cookies. A refresh can fail for
+// reasons that have nothing to do with the session being dead — an InsForge
+// blip, a rotation race — and signing someone out of the whole application
+// because one background upload picked a bad moment is a wildly
+// disproportionate response. The session is left intact and the next page
+// navigation decides its fate, where a redirect to /login is the honest answer.
+function rejectApiRequest() {
+  return NextResponse.json(
+    { success: false, error: "You are not signed in." },
+    { status: 401 },
+  );
+}
+
+function rejectRequest(req: NextRequest) {
+  return req.nextUrl.pathname.startsWith("/api/")
+    ? rejectApiRequest()
+    : redirectToLogin(req);
+}
+
 export async function proxy(req: NextRequest) {
   const hasSession =
     req.cookies.has(getAccessTokenCookieName()) ||
     req.cookies.has(getRefreshTokenCookieName());
 
   if (!hasSession) {
-    return redirectToLogin(req);
+    return rejectRequest(req);
   }
 
   const response = NextResponse.next();
@@ -63,16 +86,30 @@ export async function proxy(req: NextRequest) {
     });
 
     if (error || !accessToken) {
-      return redirectToLogin(req);
+      return rejectRequest(req);
     }
   } catch (error) {
     console.error("[proxy]", error);
-    return redirectToLogin(req);
+    return rejectRequest(req);
   }
 
   return response;
 }
 
+// Next requires a literal array here — it cannot be built from an imported
+// constant, which is why PROTECTED_ROUTES in lib/auth.ts duplicates this list.
+//
+// Authenticated API routes belong here too, and not only for route protection:
+// updateSession() is the only thing that refreshes an expired access token, so
+// a route left out of this matcher 401s the moment the token ages out, while
+// every protected page silently refreshes and keeps working. /api/auth/* is
+// deliberately absent — those routes establish the session and must stay
+// reachable without one.
 export const config = {
-  matcher: ["/dashboard/:path*", "/profile/:path*", "/find-jobs/:path*"],
+  matcher: [
+    "/dashboard/:path*",
+    "/profile/:path*",
+    "/find-jobs/:path*",
+    "/api/resume/:path*",
+  ],
 };

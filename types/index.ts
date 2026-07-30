@@ -83,6 +83,25 @@ export type Profile = {
   updated_at: string;
 };
 
+// The editable subset of a profile — everything the form owns, and the only
+// shape saveProfile accepts. Derived from Profile with Omit so it cannot drift
+// from db/schema.sql. The omitted columns are each owned by something other
+// than the form: id and email come from the auth session, is_complete is
+// derived by calculateCompletion(), resume_pdf_url is written by the upload
+// route, and the timestamps belong to the database. cover_letter_tone is
+// omitted because cover letter generation is out of scope — the column stays
+// in the schema, unused, and never appears in a write payload.
+export type ProfileInput = Omit<
+  Profile,
+  | "id"
+  | "email"
+  | "cover_letter_tone"
+  | "resume_pdf_url"
+  | "is_complete"
+  | "created_at"
+  | "updated_at"
+>;
+
 export type AgentRun = {
   id: string;
   user_id: string;

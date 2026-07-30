@@ -94,6 +94,34 @@ Adding these did not touch `globals.css`; verified by diff. If shadcn is re-run,
 
 ---
 
+### Form layout (composition)
+
+File: `components/profile/ProfileForm.tsx`
+Last updated: 2026-07-30
+
+How fields are **assembled** into a form. The entry above covers the controls themselves; this is the rhythm around them, and it is the reference for every future form (Features 09, 12).
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Background       | `bg-surface`                                                           |
+| Border           | `border border-border`                                                 |
+| Border radius    | `rounded-2xl`                                                          |
+| Text — primary   | Form title `text-base leading-6 font-semibold`; section heading `text-sm leading-5 font-semibold` |
+| Text — secondary | `text-sm leading-5 text-text-secondary`; caption `text-xs leading-4 text-text-muted` |
+| Spacing          | Card `p-6`; header `border-b border-border pb-5`; section `border-b border-border pb-8` + `pt-8`; field block `mt-4`; label→control `mt-2`; submit `mt-8` |
+| Hover state      | Inline action `text-accent transition-colors hover:text-accent-dark`   |
+| Shadow           | `shadow-[0px_1px_3px_rgba(0,0,0,0.1),0px_1px_2px_-1px_rgba(0,0,0,0.1)]` |
+| Accent usage     | Inline actions only (e.g. "Add role"); never on the section chrome     |
+
+**Pattern notes:**
+**Sections are separated by their own bottom border, never a spacer div** — `const SECTION = "border-b border-border pb-8"` applied with `pt-8`. The **last section omits the border** (`pt-8` alone) so the form does not end in a rule immediately above the submit button.
+**Two-column rows are a single shared constant** — `const GRID = "mt-4 grid gap-4 sm:grid-cols-2"`. Extracting `SECTION` and `GRID` to consts at module scope is the convention to copy; repeating the strings is how the rhythm drifts.
+Every label is the `field-label` utility with the control at `mt-2`. A field that stands alone (not in a grid) gets `mt-4`.
+The submit button is `w-full` — full-bleed at the foot of the card, not right-aligned.
+Forms carry **`noValidate`**. Native constraint validation (`type="url"`, `required`, `pattern`) cancels submission and fires no submit event, so the handler never runs and the failure is completely silent. Validation belongs to the server, which names the field it rejected. See `progress-tracker.md § Feature 06`.
+
+---
+
 ### AppNavbar
 
 File: `components/layout/AppNavbar.tsx`
@@ -402,17 +430,19 @@ Both trackers guard against React StrictMode's development double-invoke with re
 ### Profile page components
 
 Files: `components/profile/{CompletionIndicator,ResumeUpload,ProfileForm,TagInput,WorkExperienceCard}.tsx`
-Last updated: 2026-07-30
+Last updated: 2026-07-30 (Feature 06 wired persistence)
 
 | Component | Notes |
 | --- | --- |
 | `CompletionIndicator` | Banner + SVG ring. Ring is `96px` with `10px` stroke, `-rotate-90` so it starts at 12 o'clock, progress via `strokeDasharray` / `strokeDashoffset`. Track `stroke-error/15`, fill `stroke-error`. Missing-field pills: `rounded-sm bg-error/10 text-error` uppercase |
-| `ResumeUpload` | Dropzone is `rounded-xl border border-dashed border-border-muted`; icon in a `size-10 rounded-full bg-accent-muted` circle |
-| `ProfileForm` | `"use client"`, local state only. Sections separated by `border-b border-border pb-8` + `pt-8`, never spacer divs. Two-column rows are `grid gap-4 sm:grid-cols-2` |
+| `ResumeUpload` | `"use client"` since Feature 06. Dropzone is `rounded-xl border border-dashed border-border-muted`; icon in a `size-10 rounded-full bg-accent-muted` circle. Drag-over swaps the dashed border to `border-accent bg-accent-muted` via `transition-colors`. File input is `hidden` and driven by a ref from the Select Resume button. The uploaded filename is an accent link opening in a new tab — `text-accent underline-offset-2 hover:text-accent-dark hover:underline`, with `target="_blank" rel="noopener noreferrer"` |
+| `ProfileForm` | `"use client"`, local state. Sections separated by `border-b border-border pb-8` + `pt-8`, never spacer divs. Two-column rows are `grid gap-4 sm:grid-cols-2`. Submit runs through `useTransition`; the button disables and reads "Saving…" while pending. Carries `noValidate` — see `progress-tracker.md § Feature 06` |
 | `TagInput` | Shared by Skills **and** Industries — build once. Enter is intercepted (`preventDefault`) so it adds a tag instead of submitting the form. Duplicates are ignored silently |
+| `ProfileLoadError` | Whole-section failure state, shown **instead of** the form. See its own entry below |
 | `WorkExperienceCard` | `fieldset` + `sr-only` legend. Checking "Currently working here" disables the end-date input **and** clears its value, so a stale date cannot survive. Every element id derives from `role.id`, never the array index |
 
 **Pattern notes:**
+**A comma-separated text input must hold its own raw string.** Job Titles Seeking and Preferred Locations are plain `Input`s, not `TagInput`s, because the design shows them that way. Driving `value` from `listValue(profile.field)` while `onChange` writes `parseList(text)` round-trips every keystroke through an array — and `parseList` drops empty entries, so the comma in "React, Vue" is parsed away and re-rendered gone the instant it is typed. The comma can never be entered and a second value is impossible. Each field keeps a `useState` string for display and writes the parsed array alongside it. **Any future comma-separated input needs the same split**, or use `TagInput` where the design allows.
 Card surfaces reuse the project card recipe exactly (`rounded-2xl border border-border bg-surface p-6` + card shadow). The banner stays **white** despite the mock reading faintly pink — `ui-rules.md § Cards` forbids coloured card surfaces, and the red lives in the icon, pills and ring instead.
 The form omits the **Cover Letter Tone** dropdown that `build-plan.md` Feature 05 lists. The design does not show it and cover letter generation is in `project-overview.md`'s out-of-scope list. `profiles.cover_letter_tone` still exists in the schema, unused.
 Completion is **derived** via `calculateCompletion()` in `lib/profile.ts`, never stored — see `progress-tracker.md`.
@@ -421,10 +451,65 @@ The role list is capped at `MAX_WORK_EXPERIENCE` (3) from `lib/profile.ts`; past
 
 ---
 
-### Profile page shell / app header
+### ProfileLoadError — whole-section failure state
+
+File: `components/profile/ProfileLoadError.tsx`
+Last updated: 2026-07-30
+
+The project's first **section-level failure state**: what replaces a block of UI when its data cannot be read at all. Distinct from the inline error treatments below and on the login page.
+
+| Property         | Class                                                              |
+| ---------------- | ------------------------------------------------------------------ |
+| Background       | `bg-surface`                                                        |
+| Border           | `border border-border`                                              |
+| Border radius    | `rounded-2xl`                                                       |
+| Text — primary   | `text-base leading-6 font-semibold text-text-primary`               |
+| Text — secondary | `text-sm leading-5 text-text-secondary`, capped `max-w-md`          |
+| Spacing          | `px-6 py-12`; icon→heading `mt-4`, heading→body `mt-1`, body→CTA `mt-5` |
+| Hover state      | inherited from `Button variant="outline"`                           |
+| Shadow           | `shadow-[0px_1px_3px_rgba(0,0,0,0.1),0px_1px_2px_-1px_rgba(0,0,0,0.1)]` |
+| Accent usage     | `size-10 rounded-full bg-accent-muted` medallion, `AlertCircle` `size-5 text-error` |
+
+**Pattern notes:**
+Card recipe is the project standard, with `px-6 py-12` instead of `p-6` — the taller padding is what makes a centred single-message state read as deliberate rather than as a collapsed card. **Use `px-6 py-12` for any future centred empty or failure state.**
+**The failure medallion is an `bg-accent-muted` circle with the error colour in the icon — never an error-tinted circle.** `app/global-error.tsx` set this and it is the pattern to copy: `size-10 rounded-full bg-accent-muted` wrapping `AlertCircle size-5 text-error`. `AlertCircle` is the project's error icon everywhere it appears — `global-error.tsx`, the login banner, `CompletionIndicator`. Do not reach for another lucide alert glyph.
+Body copy is `text-text-secondary`, matching `global-error.tsx`. `ui-rules.md § Empty States` specifies `text-text-muted`, but that rule governs *empty* sections; a failure state follows `global-error.tsx` instead.
+Copy must state that nothing was changed. This state exists because the alternative — rendering an empty form — invites the user to save blanks over data that is merely unreachable. The reassurance is load-bearing, not decoration.
+Never rendered beside the thing that failed. It replaces it.
+The retry is a client `router.refresh()`, which is why this is a `"use client"` component despite having no other interactivity.
+
+---
+
+### Async status feedback (inline)
+
+Files: `components/profile/{ProfileForm,ResumeUpload}.tsx`
+Last updated: 2026-07-30
+
+The project has **no toast component** and the design specifies none. Async results are reported inline, next to the control that triggered them.
+
+| Property        | Class                                                     |
+| --------------- | --------------------------------------------------------- |
+| Status line     | `mt-3 text-sm leading-5` + `role="status"`                |
+| Success colour  | `text-success-dark`                                        |
+| Error colour    | `text-error`                                               |
+| Pending button  | `disabled` + label swapped to a present-continuous verb    |
+| Alignment       | Follows its trigger — `text-center` under a `w-full` button, left-aligned beside an auto-width one |
+
+**Pattern notes:**
+`role="status"` on the message so a screen reader announces the outcome without moving focus.
+The status clears when the action is retried, so a stale success never sits beside a fresh failure.
+Pending state comes from `useTransition` for Server Actions and from local state for `fetch` calls — either way the trigger disables, so a double click cannot fire twice.
+Messages are always human-readable. Raw SDK and PostgREST errors are logged with a `[path]` prefix and replaced with plain copy, per `code-standards.md § Error Handling`.
+**If a toast is ever introduced, it replaces this pattern rather than sitting beside it** — two feedback mechanisms for the same class of event is worse than either alone.
+
+---
+
+### Profile page shell / app header — RETIRED
 
 File: `app/profile/page.tsx`
-Last updated: 2026-07-29
+Last updated: 2026-07-30
+
+> **Retired.** This described the placeholder page that stood in for `/profile` between Features 02 and 05. Feature 05 replaced the body with `CompletionIndicator` + `ResumeUpload` + `ProfileForm`, and the minimal logo-and-logout header with `components/layout/AppNavbar.tsx` — see that entry instead. Feature 06 then removed the last of the mock data. Kept only so the classes below are not silently lost; do not build anything new from this section.
 
 | Property     | Class                                                                |
 | ------------ | -------------------------------------------------------------------- |
@@ -437,8 +522,7 @@ Last updated: 2026-07-29
 | Field value  | `mt-1 text-sm leading-5 font-medium text-text-primary`               |
 
 **Pattern notes:**
-**This is a placeholder, not Feature 05.** It exists only so post-login has somewhere to land. The real profile page (form, resume upload, completion indicator) replaces this body wholesale — keep the header and container, discard the rest.
-The header is a **minimal app header**, deliberately not the full app navbar: logo left, logout right, no nav links. When the real app navbar lands in Feature 14 (icons beside labels, active item `text-accent` + underline, needs `"use client"` for `usePathname`), it replaces this header everywhere and this pattern retires.
+The header was a **minimal app header**, deliberately not the full app navbar: logo left, logout right, no nav links. `AppNavbar` superseded it in Feature 05, earlier than the Feature 14 originally predicted below.
 `h-16` + `border-b border-border` + `bg-surface` matches `Navbar.tsx` exactly, so the two headers are the same height and weight when swapped.
 Page background is `bg-background` (grey) against the header's `bg-surface` (white) — the standard authenticated-app split from `public/dashboard.png`, and the first place in the project it appears.
 
