@@ -17,7 +17,8 @@ import type { Profile } from "@/types";
 const MOCK_PROFILE: Profile = {
   id: "00000000-0000-0000-0000-000000000000",
   full_name: "Faizan Ali",
-  email: "faizan@jsmastery.pro",
+  // Overwritten below with the signed-in user's address — see the note there.
+  email: "",
   phone: null,
   location: null,
   current_title: "Frontend Engineer",
@@ -27,6 +28,7 @@ const MOCK_PROFILE: Profile = {
   industries: [],
   work_experience: [
     {
+      id: "seed-role-vercel",
       company: "Vercel",
       title: "Frontend Engineer",
       startDate: "2022-01",
@@ -64,7 +66,12 @@ export default async function ProfilePage() {
     redirect(LOGIN_ROUTE);
   }
 
-  const { percentage, missingFields } = calculateCompletion(MOCK_PROFILE);
+  // The rest of the form is mock data until Feature 06, but email is the one
+  // field that is already known and authoritative: it comes from the session
+  // and is rendered disabled, so showing a fabricated address would be wrong.
+  const profile: Profile = { ...MOCK_PROFILE, email: user.email };
+
+  const { percentage, missingFields } = calculateCompletion(profile);
 
   return (
     <>
@@ -77,7 +84,7 @@ export default async function ProfilePage() {
             missingFields={missingFields}
           />
           <ResumeUpload />
-          <ProfileForm profile={MOCK_PROFILE} />
+          <ProfileForm profile={profile} />
         </div>
       </main>
     </>

@@ -1,5 +1,10 @@
 import type { Profile } from "@/types";
 
+// architecture.md describes work_experience as "Array of up to 3 roles", and
+// build-plan.md Feature 05 repeats it. jsonb cannot enforce this, so the form
+// does — and Feature 06 must re-check it server-side before writing.
+export const MAX_WORK_EXPERIENCE = 3;
+
 // Completion is derived, never stored. `profiles` deliberately has no column for
 // the percentage or the missing-field list: everything needed to compute them is
 // already in the row, and a stored percentage goes stale the moment a field

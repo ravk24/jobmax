@@ -155,6 +155,12 @@ Fix: build the redirect response *first* (targeting `LOGIN_ROUTE` as a placehold
 
 **Verified:** no horizontal overflow at 1440/1024/430; add and remove a skill; add a role (1→2); "Currently working here" disables *and* clears the end date. Banner reads 70% with exactly `PHONE`, `LOCATION`, `EDUCATION`. `tsc`, `lint`, `build` clean.
 
+**Three review findings fixed after the first build (2026-07-30):**
+
+- **`work_experience` is capped at 3.** `MAX_WORK_EXPERIENCE` in `lib/profile.ts` is the single definition. `architecture.md` and `build-plan.md` both specify the limit but jsonb cannot enforce it, so the form does — and **Feature 06 must re-check it server-side**, since a client-side cap is not a constraint.
+- **`WorkExperience` gained an `id`.** Roles were keyed by array index while `WorkExperienceCard` derived twelve element ids from the same index, so removing a middle role re-pointed React state and every `label htmlFor`. Ids are generated with `crypto.randomUUID()` **in the click handler, never during render** — during render it would differ between server and client and break hydration. This changes the jsonb shape; no DDL change was needed, and no rows exist yet.
+- **The signed-in user's email is now used.** The page fetched the session, used it only for the redirect guard, then rendered a hardcoded `faizan@jsmastery.pro` in the disabled Email field — a regression, since the previous placeholder page showed the real address. Only email is taken from the session; the rest stays mock until Feature 06.
+
 **Verification required temporarily bypassing auth** — `/profile` is protected by `proxy.ts`, so a headless browser with no session only ever sees `/login`. The page guard *and* the proxy matcher were both patched, then reverted; `git diff` confirmed both files identical to `HEAD` and `/profile` returning 307 again afterwards.
 
 ---

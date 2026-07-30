@@ -27,11 +27,11 @@ export function WorkExperienceCard({ index, role, onChange, onRemove }: Props) {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <Label htmlFor={`company-${index}`} className="field-label">
+          <Label htmlFor={`company-${role.id}`} className="field-label">
             Company name
           </Label>
           <Input
-            id={`company-${index}`}
+            id={`company-${role.id}`}
             className="mt-2"
             value={role.company}
             placeholder="E.g. Vercel"
@@ -40,11 +40,11 @@ export function WorkExperienceCard({ index, role, onChange, onRemove }: Props) {
         </div>
 
         <div>
-          <Label htmlFor={`role-title-${index}`} className="field-label">
+          <Label htmlFor={`role-title-${role.id}`} className="field-label">
             Job title
           </Label>
           <Input
-            id={`role-title-${index}`}
+            id={`role-title-${role.id}`}
             className="mt-2"
             value={role.title}
             placeholder="E.g. Frontend Engineer"
@@ -53,11 +53,11 @@ export function WorkExperienceCard({ index, role, onChange, onRemove }: Props) {
         </div>
 
         <div>
-          <Label htmlFor={`start-${index}`} className="field-label">
+          <Label htmlFor={`start-${role.id}`} className="field-label">
             Start date
           </Label>
           <Input
-            id={`start-${index}`}
+            id={`start-${role.id}`}
             type="month"
             className="mt-2"
             value={role.startDate}
@@ -67,12 +67,12 @@ export function WorkExperienceCard({ index, role, onChange, onRemove }: Props) {
 
         <div>
           <div className="flex items-center justify-between gap-3">
-            <Label htmlFor={`end-${index}`} className="field-label">
+            <Label htmlFor={`end-${role.id}`} className="field-label">
               End date
             </Label>
             <div className="flex items-center gap-2">
               <Checkbox
-                id={`current-${index}`}
+                id={`current-${role.id}`}
                 checked={role.isCurrent}
                 onCheckedChange={(checked) => {
                   const isCurrent = checked === true;
@@ -86,7 +86,7 @@ export function WorkExperienceCard({ index, role, onChange, onRemove }: Props) {
                 }}
               />
               <Label
-                htmlFor={`current-${index}`}
+                htmlFor={`current-${role.id}`}
                 className="text-xs leading-4 font-medium text-text-dark"
               >
                 Currently working here
@@ -94,7 +94,7 @@ export function WorkExperienceCard({ index, role, onChange, onRemove }: Props) {
             </div>
           </div>
           <Input
-            id={`end-${index}`}
+            id={`end-${role.id}`}
             type="month"
             className="mt-2"
             disabled={role.isCurrent}
@@ -105,11 +105,11 @@ export function WorkExperienceCard({ index, role, onChange, onRemove }: Props) {
       </div>
 
       <div className="mt-4">
-        <Label htmlFor={`responsibilities-${index}`} className="field-label">
+        <Label htmlFor={`responsibilities-${role.id}`} className="field-label">
           Key responsibilities
         </Label>
         <Textarea
-          id={`responsibilities-${index}`}
+          id={`responsibilities-${role.id}`}
           className="mt-2"
           value={role.responsibilities}
           placeholder="What did you build, own, or improve?"

@@ -19,9 +19,12 @@ export type JobType = "fulltime" | "parttime" | "contract";
 export type AgentRunStatus = "running" | "completed" | "failed";
 export type AgentLogLevel = "info" | "success" | "warning" | "error";
 
-// profiles.work_experience — capped at 3 roles by the Feature 05 form, not by
-// the database.
+// profiles.work_experience — capped at MAX_WORK_EXPERIENCE by the form, not by
+// the database (jsonb holds no constraint).
 export type WorkExperience = {
+  // Stable identity for React keys and form element ids. jsonb array members
+  // have no primary key, and array index is not stable across removals.
+  id: string;
   company: string;
   title: string;
   startDate: string;

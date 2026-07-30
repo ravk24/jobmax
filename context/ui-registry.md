@@ -410,12 +410,14 @@ Last updated: 2026-07-30
 | `ResumeUpload` | Dropzone is `rounded-xl border border-dashed border-border-muted`; icon in a `size-10 rounded-full bg-accent-muted` circle |
 | `ProfileForm` | `"use client"`, local state only. Sections separated by `border-b border-border pb-8` + `pt-8`, never spacer divs. Two-column rows are `grid gap-4 sm:grid-cols-2` |
 | `TagInput` | Shared by Skills **and** Industries — build once. Enter is intercepted (`preventDefault`) so it adds a tag instead of submitting the form. Duplicates are ignored silently |
-| `WorkExperienceCard` | `fieldset` + `sr-only` legend. Checking "Currently working here" disables the end-date input **and** clears its value, so a stale date cannot survive |
+| `WorkExperienceCard` | `fieldset` + `sr-only` legend. Checking "Currently working here" disables the end-date input **and** clears its value, so a stale date cannot survive. Every element id derives from `role.id`, never the array index |
 
 **Pattern notes:**
 Card surfaces reuse the project card recipe exactly (`rounded-2xl border border-border bg-surface p-6` + card shadow). The banner stays **white** despite the mock reading faintly pink — `ui-rules.md § Cards` forbids coloured card surfaces, and the red lives in the icon, pills and ring instead.
 The form omits the **Cover Letter Tone** dropdown that `build-plan.md` Feature 05 lists. The design does not show it and cover letter generation is in `project-overview.md`'s out-of-scope list. `profiles.cover_letter_tone` still exists in the schema, unused.
 Completion is **derived** via `calculateCompletion()` in `lib/profile.ts`, never stored — see `progress-tracker.md`.
+**Roles are keyed by `role.id`, not array index.** `WorkExperience` carries a `id` generated with `crypto.randomUUID()` in the click handler — never during render, which would break hydration. Index keys plus index-derived element ids meant removing a middle role re-pointed both React state and every `label htmlFor` binding.
+The role list is capped at `MAX_WORK_EXPERIENCE` (3) from `lib/profile.ts`; past the cap the "Add role" button is replaced by a message rather than left clickable.
 
 ---
 

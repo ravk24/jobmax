@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 
+import { MAX_WORK_EXPERIENCE } from "@/lib/profile";
 import { TagInput } from "@/components/profile/TagInput";
 import { WorkExperienceCard } from "@/components/profile/WorkExperienceCard";
 import { Button } from "@/components/ui/button";
@@ -48,14 +49,17 @@ const DEGREES = [
   "Other",
 ];
 
-const EMPTY_ROLE: WorkExperience = {
+// Called from a click handler, never during render — randomUUID() during render
+// would produce a different value on server and client and break hydration.
+const emptyRole = (): WorkExperience => ({
+  id: crypto.randomUUID(),
   company: "",
   title: "",
   startDate: "",
   endDate: null,
   isCurrent: false,
   responsibilities: "",
-};
+});
 
 const SECTION = "border-b border-border pb-8";
 const GRID = "mt-4 grid gap-4 sm:grid-cols-2";
@@ -318,25 +322,31 @@ export function ProfileForm({ profile: initialProfile }: Props) {
           <h3 className="text-sm leading-5 font-semibold text-text-primary">
             Work Experience
           </h3>
-          <button
-            type="button"
-            onClick={() => set("work_experience", [...roles, EMPTY_ROLE])}
-            className="flex items-center gap-1.5 text-sm leading-5 font-medium text-accent transition-colors hover:text-accent-dark"
-          >
-            <Plus className="size-4" />
-            Add role
-          </button>
+          {roles.length < MAX_WORK_EXPERIENCE ? (
+            <button
+              type="button"
+              onClick={() => set("work_experience", [...roles, emptyRole()])}
+              className="flex items-center gap-1.5 text-sm leading-5 font-medium text-accent transition-colors hover:text-accent-dark"
+            >
+              <Plus className="size-4" />
+              Add role
+            </button>
+          ) : (
+            <p className="text-xs leading-4 text-text-muted">
+              Maximum of {MAX_WORK_EXPERIENCE} roles
+            </p>
+          )}
         </div>
 
         <div className="mt-4 flex flex-col gap-4">
           {roles.length === 0 ? (
             <p className="text-sm leading-5 text-text-muted">
-              No roles added yet. Add up to three.
+              No roles added yet. Add up to {MAX_WORK_EXPERIENCE}.
             </p>
           ) : (
             roles.map((role, index) => (
               <WorkExperienceCard
-                key={index}
+                key={role.id}
                 index={index}
                 role={role}
                 onChange={(next) => setRole(index, next)}
