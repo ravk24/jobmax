@@ -6,23 +6,37 @@ import { FileText, UploadCloud } from "lucide-react";
 
 import { MAX_RESUME_BYTES } from "@/lib/profile";
 import { Button } from "@/components/ui/button";
+import type { ProfileExtraction } from "@/types";
 
 const MAX_RESUME_MB = Math.round(MAX_RESUME_BYTES / (1024 * 1024));
+
+type ExtractStatus = { kind: "success" | "error"; message: string };
+
+type ExtractResponse = {
+  success: boolean;
+  data?: ProfileExtraction;
+  error?: string;
+};
 
 type Props = {
   resumeUrl: string | null;
   // Signed, time-limited and credential-free — the private-bucket object URL in
   // resumeUrl cannot be opened in a tab. Minted per render by the page.
   resumeHref: string | null;
+  // Handed up to ProfileEditor, which passes it to the form. This component
+  // never sees the fields it fills.
+  onExtracted: (extraction: ProfileExtraction) => void;
 };
 
-export function ResumeUpload({ resumeUrl, resumeHref }: Props) {
+export function ResumeUpload({ resumeUrl, resumeHref, onExtracted }: Props) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploadedName, setUploadedName] = useState<string | null>(null);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractStatus, setExtractStatus] = useState<ExtractStatus | null>(null);
 
   // The route re-checks both of these. Doing it here as well means the common
   // mistakes never spend 5MB of upload before being rejected.
@@ -69,7 +83,40 @@ export function ResumeUpload({ resumeUrl, resumeHref }: Props) {
     }
   };
 
+  // No body: the route reads the resume already stored for this session's user.
+  const extract = async () => {
+    setExtractStatus(null);
+    setIsExtracting(true);
+
+    try {
+      const response = await fetch("/api/resume/extract", { method: "POST" });
+      const result: ExtractResponse = await response.json();
+
+      if (!response.ok || !result.success || !result.data) {
+        setExtractStatus({
+          kind: "error",
+          message: result.error ?? "Could not read your resume.",
+        });
+        return;
+      }
+
+      // A fresh object every time, which is what lets the form tell a second
+      // extraction apart from the first.
+      onExtracted(result.data);
+      setExtractStatus({
+        kind: "success",
+        message: "Resume read. Review the fields below, then save.",
+      });
+    } catch (caught) {
+      console.error("[components/profile/ResumeUpload]", caught);
+      setExtractStatus({ kind: "error", message: "Could not read your resume." });
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
   const currentResume = uploadedName ?? (resumeUrl ? "resume.pdf" : null);
+  const isBusy = isUploading || isExtracting;
 
   return (
     <section className="rounded-2xl border border-border bg-surface p-6 shadow-[0px_1px_3px_rgba(0,0,0,0.1),0px_1px_2px_-1px_rgba(0,0,0,0.1)]">
@@ -88,7 +135,7 @@ export function ResumeUpload({ resumeUrl, resumeHref }: Props) {
           other. This is a mouse affordance only. */}
       <div
         onClick={() => {
-          if (!isUploading) inputRef.current?.click();
+          if (!isBusy) inputRef.current?.click();
         }}
         onDragOver={(event) => {
           event.preventDefault();
@@ -98,12 +145,14 @@ export function ResumeUpload({ resumeUrl, resumeHref }: Props) {
         onDrop={(event) => {
           event.preventDefault();
           setIsDraggingOver(false);
-          if (isUploading) return;
+          // Also blocked while extracting — a drop mid-read would replace the
+          // very file the model is looking at.
+          if (isBusy) return;
           const file = event.dataTransfer.files[0];
           if (file) void upload(file);
         }}
         className={`mt-5 flex flex-col items-center rounded-xl border border-dashed px-6 py-10 text-center transition-colors ${
-          isUploading ? "cursor-default" : "cursor-pointer"
+          isBusy ? "cursor-default" : "cursor-pointer"
         } ${
           isDraggingOver
             ? "border-accent bg-accent-muted"
@@ -134,11 +183,11 @@ export function ResumeUpload({ resumeUrl, resumeHref }: Props) {
           }}
         />
 
-        <div className="mt-4">
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
           <Button
             type="button"
             variant="outline"
-            disabled={isUploading}
+            disabled={isBusy}
             // The surrounding surface opens the picker as well; without this the
             // click reaches both handlers.
             onClick={(event) => {
@@ -148,6 +197,27 @@ export function ResumeUpload({ resumeUrl, resumeHref }: Props) {
           >
             {isUploading ? "Uploading…" : "Select Resume"}
           </Button>
+
+          {/* Keyed off the resume itself, not off resumeHref — that is null
+              whenever the signed URL fails to mint, even though the object is
+              there and perfectly readable. */}
+          {currentResume ? (
+            <Button
+              type="button"
+              // Outline, not accent. The card's one primary is Generate Resume
+              // from Profile, which comes from the design mock; this button
+              // does not, so it sits beside Select Resume rather than
+              // out-ranking a decision the mock already made.
+              variant="outline"
+              disabled={isBusy}
+              onClick={(event) => {
+                event.stopPropagation();
+                void extract();
+              }}
+            >
+              {isExtracting ? "Extracting…" : "Extract from Resume"}
+            </Button>
+          ) : null}
         </div>
 
         {error ? (
@@ -177,6 +247,21 @@ export function ResumeUpload({ resumeUrl, resumeHref }: Props) {
           </p>
         ) : null}
       </div>
+
+      {/* Outside the dropzone, and separate from the upload status above. Two
+          independent controls need two independent lines — folded together, an
+          upload error would hide the extraction result, and the message would
+          sit inside a surface that opens the file picker when clicked. */}
+      {extractStatus ? (
+        <p
+          role="status"
+          className={`mt-3 text-sm leading-5 ${
+            extractStatus.kind === "success" ? "text-success-dark" : "text-error"
+          }`}
+        >
+          {extractStatus.message}
+        </p>
+      ) : null}
 
       <div className="mt-5 flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm leading-5 text-text-secondary">

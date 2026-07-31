@@ -42,7 +42,7 @@ export type Education = {
 };
 
 // jobs.company_research — the dossier shape from build-plan.md Feature 13.
-// Always fully populated: if browser research fails, GPT-4o synthesises from
+// Always fully populated: if browser research fails, Gemini synthesises from
 // the job posting and profile alone rather than returning empty.
 export type CompanyResearch = {
   companyOverview: string;
@@ -102,6 +102,34 @@ export type ProfileInput = Omit<
   | "updated_at"
 >;
 
+// What Feature 07 reads off a resume PDF. A Pick from ProfileInput rather than
+// a hand-written shape, so field names and types cannot drift from what the
+// form holds.
+//
+// The five job-preference fields — job_titles_seeking, remote_preference,
+// preferred_locations, salary_expectation, work_authorization — are absent on
+// purpose. They record what the user wants, not what is printed on the page, so
+// a schema-constrained model asked for them would fill the slot by inventing.
+// Excluding them here makes writing one a compile error rather than a review
+// catch, and it keeps the merge away from job_titles_seeking and
+// preferred_locations, whose raw-text mirrors in ProfileForm would otherwise go
+// stale.
+export type ProfileExtraction = Pick<
+  ProfileInput,
+  | "full_name"
+  | "phone"
+  | "location"
+  | "current_title"
+  | "experience_level"
+  | "years_experience"
+  | "skills"
+  | "industries"
+  | "work_experience"
+  | "education"
+  | "linkedin_url"
+  | "portfolio_url"
+>;
+
 export type AgentRun = {
   id: string;
   user_id: string;
@@ -132,7 +160,7 @@ export type Job = {
   nice_to_have: string[] | null;
   benefits: string[] | null;
   about_company: string | null;
-  // Null until GPT-4o has scored the job.
+  // Null until Gemini has scored the job.
   match_score: number | null;
   match_reason: string | null;
   matched_skills: string[] | null;

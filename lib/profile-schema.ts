@@ -18,11 +18,15 @@ import type { Profile, ProfileInput } from "@/types";
 // Text columns are unbounded in Postgres, so these are the only limits. Sized
 // to be generous rather than tight: the point is to stop a megabyte of junk
 // reaching the database, not to police how someone writes about their job.
-const MAX_SHORT_TEXT = 500;
+//
+// Exported because lib/resume-extraction.ts constrains Gemini with the same
+// numbers. Duplicating them would drift, and the symptom of drift is a save
+// rejected for being "too long" on a field the user never typed.
+export const MAX_SHORT_TEXT = 500;
 const MAX_RESPONSIBILITIES = 5000;
-const MAX_TAG = 100;
-const MAX_TAGS = 50;
-const MAX_YEARS_EXPERIENCE = 80;
+export const MAX_TAG = 100;
+export const MAX_TAGS = 50;
+export const MAX_YEARS_EXPERIENCE = 80;
 
 export const FIELD_LABELS: Record<string, string> = {
   full_name: "Full name",

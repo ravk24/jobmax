@@ -8,8 +8,8 @@ Update this file after every completed feature. Any AI agent reading this should
 
 **Phase:** Phase 2 — Profile Page
 **Last completed:** 05 Profile Page — Full UI (2026-07-30).
-**In progress:** 06 Profile Save Logic — **code complete, runtime verification outstanding.** Static checks pass and the database half is proven; the signed-in click-through has not been done. 02 Auth is still open on GitHub sign-in and the Log out click.
-**Next:** finish the Feature 06 walkthrough (see § Feature 06), then 07 AI Profile Extraction from Resume.
+**In progress:** 06 Profile Save Logic and 07 AI Profile Extraction — **both code complete, both awaiting the same signed-in click-through.** Static checks pass throughout; Gemini has been called live from a script but never from the app. 02 Auth is still open on GitHub sign-in and the Log out click.
+**Next:** one walkthrough settles both — extract into a blank profile, then save. See § Feature 07 for the matrix.
 
 ---
 
@@ -26,7 +26,7 @@ Update this file after every completed feature. Any AI agent reading this should
 
 - [x] 05 Profile Page — Full UI (mock data, no save logic — Feature 06 wires it)
 - [~] 06 Profile Save Logic — built; awaiting the signed-in click-through
-- [ ] 07 AI Profile Extraction from Resume
+- [~] 07 AI Profile Extraction from Resume — built; awaiting the same click-through as 06
 - [ ] 08 Resume PDF Generation from Profile
 
 ### Phase 3 — Find Jobs Page
@@ -181,7 +181,7 @@ Fix: build the redirect response *first* (targeting `LOGIN_ROUTE` as a placehold
 
 **`ProfileInput` is a second shape, deliberately.** `Profile` is the row shape the page reads and the form holds; `ProfileInput` is `Omit<Profile, id | email | cover_letter_tone | resume_pdf_url | is_complete | created_at | updated_at>` and is the only thing `saveProfile` accepts. A Server Action is a public POST endpoint, so the client can never supply its own id, email or completion flag. `toProfileInput()` in `lib/profile.ts` lists the keys explicitly, so a new column is a compile error until someone decides who owns it.
 
-**`zod` was on the approved list in `code-standards.md` but had never been installed.** Now at v4 — note the v4 API differs from v3 in places (`z.email()` replaces `z.string().email()`), which matters for Features 07/10/13 parsing GPT-4o JSON.
+**`zod` was on the approved list in `code-standards.md` but had never been installed.** Now at v4 — note the v4 API differs from v3 in places (`z.email()` replaces `z.string().email()`), which matters for Features 07/10/13 parsing Gemini JSON.
 
 **Completion stayed derived.** `is_complete` is the one derived value that persists, because it is a real column. The percentage and the missing-field list are still computed by `calculateCompletion()` on every render and stored nowhere, per the closed backlog decision.
 
@@ -256,6 +256,78 @@ Five questions that had been carried across sessions are now settled. They are d
 **`profiles.updated_at` is maintained by a trigger** (`set_updated_at`), so no caller can forget it. Feature 06 does not need to set it manually.
 
 **`lib/posthog-server.ts` is built but has no caller yet** — the events that need it are all in Features 06/10/13. It is in place so those features import one client rather than each rolling their own.
+
+---
+
+### Feature 07 — AI Profile Extraction from Resume (built 2026-07-31, awaiting click-through)
+
+**Extraction writes nothing to the database.** It populates client state; the user reviews and presses Save Profile, which stays the single write path. So there is no `revalidatePath` and no `router.refresh()` after an extraction — nothing on the server changed.
+
+**The wiring was the hard part, not the model call.** `ProfileForm` seeds its state once at mount and `ResumeUpload` is a sibling with no channel to it, so an extraction had nowhere to land. `components/profile/ProfileEditor.tsx` now sits between the page and both of them holding **one** piece of state: the extraction result. It deliberately does not own the profile — lifting that would make `ProfileForm` controlled and force the two raw-text mirrors (`jobTitlesText`, `locationsText`) either up into a component that knows nothing about comma parsing, or into exactly the staleness bug they were added to fix. Cost as built: one prop and about ten lines.
+
+**`ProfileEditor` returns a fragment, not a `<div>`.** The page stacks sections with `flex flex-col gap-6`; a wrapper element makes the resume card and the form a single flex child and silently eats the 24px between them.
+
+**The merge is applied during render, not in an effect.** An effect runs after the browser has painted the fields still empty. The guard compares object identity against an `appliedExtraction` state, so a second extraction re-applies — safe, because the merge only ever fills blanks.
+
+**An extraction that found no education must not create one.** `normalize()` always returns education as a fully-formed object, because that is the shape the form needs — so a resume with no education section still produces `{degree:"",field:"",institution:"",graduationYear:0}`. Merging that turned a null column into an empty object that the next save persisted, and that reads as "has education" to everything downstream. `mergeEducation` now returns the current value unless the extracted object has real content. Caught in review, fixed before any of it reached the database.
+
+**The skills cap is enforced, not just requested.** The prompt asks for the 20 most relevant; `normalize()` now slices to the same number rather than to `MAX_TAGS` (50). A model that ignores the instruction would otherwise hand the user a forty-chip list that `TagInput` can only prune one at a time. Deliberately not a schema `maxItems` — a hard cap there fails the whole parse and loses an otherwise good reading. Industries keep the wider cap; a resume implies a handful at most.
+
+**Only empty fields are filled, and two rules in that merge are opposites.** `years_experience` uses `isFilled`, so a user's typed `0` survives — "0 years" is an answer. `graduationYear` treats `0` as empty, because that is what `blankProfile` and `setEducation` seed and what the input renders as blank. A generic loop over keys gets one of the two wrong, which is why `mergeExtraction` is written field by field. `education` merges per key (four independent scalars, and `setEducation` backfills all four the moment one is touched); `work_experience` and the tag lists are all-or-nothing.
+
+**Only 12 factual fields are extracted.** `ProfileExtraction` is a `Pick` from `ProfileInput` that omits the five job-preference fields, so writing one is a compile error. That also keeps the merge away from `job_titles_seeking` and `preferred_locations` — the two fields whose text mirrors could go stale.
+
+#### What the first live Gemini calls taught us
+
+**`gemini-3.6-flash` is a thinking model, and thought tokens are drawn from `max_output_tokens`.** At the documented 800 it spent **767 thought tokens and emitted 14** — 32 characters of JSON that parsed as nothing. With `thinking_level: "minimal"`: 0 thought tokens, 399 output tokens, a complete and correct reading. Reading fields off a resume is transcription, not reasoning. **This will bite Features 08, 10 and 13 the same way** — the symptom is not a short answer, it is unparseable JSON and a lost call.
+
+**`max_output_tokens` raised 800 → 1200.** A two-role resume costs 399; three roles with twenty skills lands near the old ceiling, and overrunning it loses everything rather than truncating one field. Output is billed as generated, so the headroom is free.
+
+**`temperature` does not exist on the interactions API.** `GenerationConfig_2` declares ten fields and that is not one of them; it survives only on the legacy `models.generateContent` config. The project's "0.3 for extraction" rule is unimplementable as written. `seed` replaces it and was verified to give byte-identical output across runs. `library-docs.md` corrected.
+
+**The default draft-2020-12 JSON Schema is accepted** — `$schema`, `anyOf` and `additionalProperties` included. The anticipated `{ target: "openapi-3.0" }` fallback was not needed; both dialects were probed and both work.
+
+**`z.toJSONSchema()` throws on `.transform()`**, so none of `profile-schema.ts`'s composed helpers can be reused — `nullableText` and `tagList` both end in one. `.catch()` converts but only to a `default` *hint*, and it swallows exactly the model misbehaviour worth logging. The extraction schema is fresh, transform-free, and tolerant via `.nullish()`; the caps are imported from `profile-schema.ts` so extraction cannot produce a value the save later rejects.
+
+**`output_text` is `string | undefined`** — guarded, because `JSON.parse(undefined)` throws.
+
+#### Deliberate calls worth not re-litigating
+
+- **Dates are normalised after parsing, not constrained in the schema.** `<input type="month">` renders **blank** for anything that is not `YYYY-MM`, so a stray "Jan 2021" would be invisible in the form yet still present in state and still saved. A `.regex()` in the schema would instead fail the whole parse and throw away a good reading over one bad date.
+- **`education.degree` is `z.enum(DEGREE_OPTIONS)`.** A free-string degree outside the Select's options leaves Radix with no matching item — field renders empty while state holds garbage, and the garbage persists. `DEGREE_OPTIONS` moved from `ProfileForm` to `lib/profile.ts` so one list both populates the dropdown and constrains the model.
+- **Roles carry no `id` from the model**; the server mints `crypto.randomUUID()` per role after validation. React keys and every element id in `WorkExperienceCard` hang off it, and a model cannot mint stable identities.
+- **`maxItems` is treated as a request.** Skills and roles are sliced after parsing — an over-long list would otherwise surface as a save rejected for roles the user never entered.
+- **A work-experience array of entirely blank roles counts as empty.** Otherwise "Add role" then "Extract" is a silent no-op with nothing to explain it. **Both sides are tested** — an extraction that found no work history still arrives as an array, so replacing unconditionally deleted that same blank card instead. Fixed in review.
+- **The Extract button is `variant="outline"`, not accent.** Built as accent, stepped down in review: the resume card's primary belongs to Generate Resume from Profile, which comes from the design mock. A control added later inherits the card's hierarchy rather than redefining it.
+- **`extractProfileFromResume` returns a discriminated union**, not `{success, error}`. Five outcomes map to five status codes and five sentences, and user-facing copy belongs to the route, not to `lib/`. Same reasoning as `ProfileReadResult`.
+- **No PostHog event.** The nine in `code-standards.md` are still the only nine.
+- `RESUME_BUCKET` and `resumeObjectKey()` lifted into `lib/profile.ts` — three call sites now address the same object through one definition.
+
+#### Not yet verified
+
+**No authenticated extraction has been run.** Unauthenticated `POST /api/resume/extract` returns `401 {"success":false,"error":"You are not signed in."}` (from the proxy, since `/api/resume/:path*` is matched), and `tsc`/`lint` are clean. Everything past the sign-in boundary — `storage.download()`, which still has no other caller in the app; the PDF `{type:"document"}` path, probed only with text; the 429 narrowing; and the merge behaviour in the browser — needs the click-through.
+
+---
+
+### Cross-cutting — AI provider changed to Google Gemini (2026-07-31)
+
+**GPT-4o is out; Google Gemini is in, across Features 07, 08, 10 and 13.** No OpenAI credits. Every doc that named GPT-4o or `OPENAI_API_KEY` was rewritten. No application code changed — nothing had been built against OpenAI yet, and no AI package was ever installed, so this cost nothing but documentation.
+
+**The env var is `GEMINI_API_KEY`**, not a name of our choosing: `@google/genai` reads that exact variable when constructed with no argument. `.env.local` was renamed and **its value blanked** — the old `sk-…` value was an OpenAI key and useless here. The app cannot make a model call until a Google AI Studio key is pasted in.
+
+**The package is `@google/genai` v2, not `openai` and not `@google/generative-ai`.** Its surface is an Interactions API — `ai.interactions.create({ model, system_instruction, input, response_format, generation_config })` returning `interaction.output_text`. The `models.generateContent()` / `response.text()` shape that most training data teaches is superseded. Verified against the live docs on 2026-07-31 **and against the installed `.d.ts`** — `interactions` is a public getter on `GoogleGenAI`, `constructor(options)` takes a required options object, and the params really are snake_case (`system_instruction`, `generation_config`, `response_format`) despite being a TypeScript SDK. Installed at v2.15.0.
+
+**`lib/gemini.ts` exists and is the only place the key or the model string is named.** It exports `getGeminiApiKey()`, `getGemini()` and `GEMINI_MODEL`, following the `getInsforgeUrl()` accessor convention in `lib/auth.ts`. The client is lazy on purpose: a module-level `new GoogleGenAI(...)` throws during `next build` on any machine without the key, including CI. Server-only by comment convention, matching `lib/profile-schema.ts` — the `server-only` package is not used anywhere in this project. **It has no caller yet** and has never made a live API call.
+
+**Model is `gemini-3.6-flash`, pinned once as `GEMINI_MODEL` in `lib/gemini.ts`.** The old rule was "the model string is always `gpt-4o`", which invited hardcoding at four call sites. `gemini-3.5-flash-lite` is the fallback if the free tier rate-limits us.
+
+**Structured output got stronger, not weaker.** Gemini constrains decoding to a JSON Schema passed in `response_format.schema`, where GPT-4o's `json_object` mode only promised *some* valid JSON. The schema is generated with `z.toJSONSchema()` — built into zod v4, which we already have — so the zod schema stays the single definition of the shape and both constrains generation and validates the result.
+
+**`pdf-parse` was dropped from the approved dependency list before it was ever installed.** Gemini takes a PDF as a `{ type: "document" }` input part, so Feature 07 sends the bytes and skips text extraction entirely — better on multi-column resumes, and image-only PDFs now work instead of returning empty. What is lost is the pre-flight readability check: we no longer know a PDF is unreadable until after the model call, so "could not extract" is now decided from an all-empty extraction result rather than from an empty `pdfData.text`.
+
+**The free tier rate-limits per minute and per day.** Every AI call site must render a 429 as "try again in a moment". This did not matter with a paid OpenAI key and now does.
+
+**Stagehand's model config is documented but unverified.** `model: { modelName: "google/gemini-3.6-flash", apiKey: process.env.GEMINI_API_KEY! }` in both `architecture.md` and `library-docs.md`. Stagehand is not installed, so this string has not been run against a real version — confirm it against the installed package when Feature 13 starts. `architecture.md` also still shows the older `stagehand.page` accessor where `library-docs.md` shows `stagehand.context.activePage()`; `library-docs.md` is the corrected one.
 
 ---
 

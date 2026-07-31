@@ -2,9 +2,8 @@ import { redirect } from "next/navigation";
 
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { CompletionIndicator } from "@/components/profile/CompletionIndicator";
-import { ProfileForm } from "@/components/profile/ProfileForm";
+import { ProfileEditor } from "@/components/profile/ProfileEditor";
 import { ProfileLoadError } from "@/components/profile/ProfileLoadError";
-import { ResumeUpload } from "@/components/profile/ResumeUpload";
 import { LOGIN_ROUTE } from "@/lib/auth";
 import {
   getCurrentUser,
@@ -56,11 +55,13 @@ export default async function ProfilePage() {
             percentage={percentage}
             missingFields={missingFields}
           />
-          <ResumeUpload
+          {/* CompletionIndicator stays out here: it is presentational and has
+              no part in extraction, so it should not join the client bundle. */}
+          <ProfileEditor
+            profile={profile}
             resumeUrl={profile.resume_pdf_url}
             resumeHref={resumeHref}
           />
-          <ProfileForm profile={profile} />
         </div>
       </main>
     </>

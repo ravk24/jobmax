@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS public.jobs (
   nice_to_have       text[],
   benefits           text[],
   about_company      text,
-  -- Null until GPT-4o has scored the job.
+  -- Null until Gemini has scored the job.
   match_score        integer CHECK (match_score BETWEEN 0 AND 100),
   match_reason       text,
   matched_skills     text[],

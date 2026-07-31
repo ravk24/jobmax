@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { createServerClient } from "@insforge/sdk/ssr";
 
 import { getInsforgeUrl } from "@/lib/auth";
+import { RESUME_BUCKET, resumeObjectKey } from "@/lib/profile";
 import { parseProfileRow } from "@/lib/profile-schema";
 import type { Profile } from "@/types";
 
@@ -36,8 +37,8 @@ export async function getResumeSignedUrl(
 ): Promise<string | null> {
   const insforge = await createInsforgeServer();
   const { data, error } = await insforge.storage
-    .from("resumes")
-    .createSignedUrl(`${userId}/resume.pdf`, RESUME_LINK_TTL_SECONDS);
+    .from(RESUME_BUCKET)
+    .createSignedUrl(resumeObjectKey(userId), RESUME_LINK_TTL_SECONDS);
 
   if (error || !data) {
     console.error("[lib/insforge-server]", error?.message);

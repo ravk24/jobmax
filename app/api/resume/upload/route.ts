@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 
 import { createInsforgeServer, getCurrentUser } from "@/lib/insforge-server";
-import { MAX_RESUME_BYTES } from "@/lib/profile";
+import {
+  MAX_RESUME_BYTES,
+  RESUME_BUCKET,
+  resumeObjectKey,
+} from "@/lib/profile";
 
 const RESUME_FIELD = "resume";
-const RESUME_BUCKET = "resumes";
 
 // The file rides an API route rather than the Server Action that saves the
 // form: Server Action request bodies are capped at 1MB by default and the
@@ -53,7 +56,7 @@ export async function POST(req: NextRequest) {
     // for the one active resume per user.
     const { data, error: uploadError } = await insforge.storage
       .from(RESUME_BUCKET)
-      .upload(`${user.id}/resume.pdf`, file);
+      .upload(resumeObjectKey(user.id), file);
 
     if (uploadError || !data) {
       console.error("[api/resume/upload]", uploadError?.message);

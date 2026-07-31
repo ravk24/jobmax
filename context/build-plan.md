@@ -132,9 +132,9 @@ Wire profile form to InsForge DB.
 
 ---
 
-### 07 AI Profile Extraction from Resume
+### 07 AI Profile Extraction from Resume — built 2026-07-31
 
-Extract from Resume button — GPT-4o reads uploaded PDF and auto-fills profile form fields.
+Extract from Resume button — Gemini reads uploaded PDF and auto-fills profile form fields.
 
 **UI:**
 
@@ -145,27 +145,35 @@ Extract from Resume button — GPT-4o reads uploaded PDF and auto-fills profile 
 
 **Logic:**
 
-- pdf-parse extracts raw text from uploaded PDF buffer
-- If extracted text is empty or too short — return error: "Could not extract text from this PDF. Please try a different file."
-- GPT-4o reads extracted text and returns structured JSON matching all profile field names
+- The uploaded PDF is downloaded from InsForge Storage and sent to Gemini as a `{ type: "document" }` input part — no text-extraction step, no `pdf-parse`
+- Gemini returns structured JSON matching all profile field names, constrained by a JSON Schema derived from the zod schema with `z.toJSONSchema()`
+- If every extracted field comes back empty — return error: "Could not extract anything from this PDF. Please try a different file."
+- On a 429 from the free tier — return error: "Extraction is busy right now. Try again in a moment." Never crash the page
 - Form fields populated with extracted data
 - User saves manually after reviewing
+
+> **Built with two narrowings, deliberately.**
+>
+> - **"all profile field names" is 12, not 17.** The five job-preference fields — `job_titles_seeking`, `remote_preference`, `preferred_locations`, `salary_expectation`, `work_authorization` — record intent, not anything printed on a resume, and a schema-constrained model fills a slot rather than leaving it null. Asking for them invites invention.
+> - **Extraction fills only empty fields.** It never overwrites what the user has typed; the only undo here is reloading the page, which is not discoverable.
+>
+> Also: extraction writes nothing to the database, so "auto-fills" means client state until the user presses Save Profile. See `progress-tracker.md § Feature 07`.
 
 ---
 
 ### 08 Resume PDF Generation from Profile
 
-Generate a clean professional PDF resume from current profile data using GPT-4o.
+Generate a clean professional PDF resume from current profile data using Gemini.
 
 **Logic:**
 
 - POST /api/resume/generate
 - Reads current profile data from profiles table
-- GPT-4o generates professional resume content:
+- Gemini generates professional resume content:
   - Professional summary paragraph
   - Polished work experience bullet points
   - Clean professional language throughout
-- @react-pdf/renderer renders GPT-4o output into clean single-page PDF using renderToBuffer()
+- @react-pdf/renderer renders Gemini output into clean single-page PDF using renderToBuffer()
 - Buffer uploaded to InsForge Storage at resumes/{user_id}/resume.pdf with upsert: true
 - resume_pdf_url updated in profiles table
 
@@ -204,7 +212,7 @@ Agent calls Adzuna API to find jobs matching user's search criteria, scores them
   - Detect country from location input — default to 'us'
 - For each job returned:
   - Extract title, company, location, salary, description snippet, redirect_url
-  - GPT-4o scores job against user profile:
+  - Gemini scores job against user profile:
     - matchScore — integer 0-100
     - matchReason — one paragraph explanation
     - matchedSkills — skills user has that job requires
@@ -248,7 +256,7 @@ Build the complete job details page UI. Job data from DB is already available fr
 - Back to Jobs link
 - Job header — company logo placeholder, job title, company name, match score badge with percentage, View Job Post button (links to redirect_url)
 - Info cards row — Salary Est., Location, Job Type, Date Found
-- AI Match Reasoning section — match reason paragraph from GPT-4o
+- AI Match Reasoning section — match reason paragraph from Gemini
 - Required Skills vs Your Profile — matched skills as green badges, missing skills as red/orange badges
 - Job Description section — description content from Adzuna
 - Company Research card — empty state with Research Company button. After research: structured dossier with company overview, tech stack, culture, why this role, interview prep
@@ -271,7 +279,7 @@ Agent researches the company using their public website and builds a structured 
   - Strip subdomain from response.url hostname (e.g. jobs.stripe.com → stripe.com)
   - Construct homepage URL as https://{rootDomain}
   - If response.url still contains "adzuna.com" or fetch throws — fall back to https://www.{company}.com (company name from DB)
-  - If Stagehand gets no meaningful content (oneLiner and productSummary empty) — skip browser research entirely, proceed to GPT-4o synthesis with job description and profile only
+  - If Stagehand gets no meaningful content (oneLiner and productSummary empty) — skip browser research entirely, proceed to Gemini synthesis with job description and profile only
 - Open single Browserbase session with Stagehand
   **Stagehand homepage extraction:**
 
@@ -331,7 +339,7 @@ const page = await stagehand.extract({
 ```
 
 - Close Browserbase session after homepage + max 3 sub-pages
-  **GPT-4o synthesis (runs after browser closes):**
+  **Gemini synthesis (runs after browser closes):**
 
 System prompt:
 
@@ -383,7 +391,7 @@ Temperature: 0.4
 ```
 
 - Save complete dossier to jobs.company_research jsonb column
-- Always return a dossier — never fail silently. If browser research failed, GPT-4o synthesizes from job description and profile alone.
+- Always return a dossier — never fail silently. If browser research failed, Gemini synthesizes from job description and profile alone.
   **PostHog event:** `company_researched` — { userId, jobId, company }
 
 ---

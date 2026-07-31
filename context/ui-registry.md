@@ -502,6 +502,57 @@ Pending state comes from `useTransition` for Server Actions and from local state
 Messages are always human-readable. Raw SDK and PostgREST errors are logged with a `[path]` prefix and replaced with plain copy, per `code-standards.md § Error Handling`.
 **If a toast is ever introduced, it replaces this pattern rather than sitting beside it** — two feedback mechanisms for the same class of event is worse than either alone.
 
+**One status line per control, not one per card** (added Feature 07). The resume card now holds two: the upload chain inside the dropzone, and the extraction line below it. Folding them together would let an upload error hide an extraction result, and would put the message inside a surface that opens the file picker when clicked. When a card grows a second async control, give it its own line rather than sharing.
+
+---
+
+### Extract from Resume button
+
+File: `components/profile/ResumeUpload.tsx`
+Last updated: 2026-07-31
+
+Second action in the resume dropzone, appearing only once a resume exists.
+
+| Property        | Class / value                                                       |
+| --------------- | ------------------------------------------------------------------- |
+| Button row      | `mt-4 flex flex-wrap items-center justify-center gap-3`             |
+| Extract button  | `variant="outline"`, matching Select Resume beside it                |
+| Pending label   | `Extracting…`, with `disabled`                                       |
+| Status line     | `mt-3 text-sm leading-5` + `role="status"`, **outside** the dropzone  |
+
+**Pattern notes:**
+**One accent action per card.** Extract was built as `variant="default"` and stepped down in review: the resume card's primary is already Generate Resume from Profile, which comes from the design mock. A button added later does not out-rank a decision the mock made — even when, as here, it is arguably the more useful action. Any new control on an existing card inherits that card's hierarchy rather than redefining it.
+Both buttons disable on either pending flag, so a file cannot be swapped mid-extraction. The dropzone's own `onClick`, `onDrop` and cursor class share that flag.
+`event.stopPropagation()` on both buttons — the dropzone surface opens the file picker, so without it the click reaches two handlers.
+No icon on Extract, so it does not compete with the `FileText` on Generate Resume in the strip below.
+Visibility keys off the resume itself, never off the signed URL — that is null whenever minting fails, even though the object is there and readable.
+
+---
+
+### ProfileEditor — transparent state carrier
+
+File: `components/profile/ProfileEditor.tsx`
+Last updated: 2026-07-31
+
+The project's first component that exists **only to carry state between two siblings** and renders no markup of its own. Registered because that is precisely what makes it easy to break.
+
+| Property         | Class                                                          |
+| ---------------- | -------------------------------------------------------------- |
+| Background       | none — renders no element                                      |
+| Border           | none                                                            |
+| Border radius    | none                                                            |
+| Text — primary   | none                                                            |
+| Text — secondary | none                                                            |
+| Spacing          | none — **inherited from the parent's `flex flex-col gap-6`**    |
+| Hover state      | none                                                            |
+| Shadow           | none                                                            |
+| Accent usage     | none                                                            |
+
+**Pattern notes:**
+**A transparent wrapper returns a fragment, never a `<div>`.** `app/profile/page.tsx` stacks its sections with `flex flex-col gap-6`. An element here would make the resume card and the form a single flex child, and the 24px between them would disappear — a spacing regression with no visible cause in either component's own classes. Any future component introduced purely to share state between siblings must do the same.
+It owns one piece of state and no styling. Presentational children that take no part in the shared state stay outside it — `CompletionIndicator` remains on the page as a Server Component rather than being pulled into the client bundle for symmetry.
+Nothing visual should ever be added here. The moment this component needs a class, the layout decision has moved into the wrong file.
+
 ---
 
 ### Profile page shell / app header — RETIRED

@@ -1,6 +1,6 @@
 # JobMax
 
-**An AI job-hunting assistant.** Set up your profile once, and the agent discovers relevant roles from Adzuna, scores each one against your actual skills with GPT-4o, and researches the company across their public pages so you arrive at every application already informed.
+**An AI job-hunting assistant.** Set up your profile once, and the agent discovers relevant roles from Adzuna, scores each one against your actual skills with Gemini, and researches the company across their public pages so you arrive at every application already informed.
 
 > ### ⚠️ Active development — Phase 1 of 5
 >
@@ -71,9 +71,11 @@ Installed and in use:
 | Icons | lucide-react v1 | v1 dropped brand marks, so the Google/GitHub logos are inline SVGs |
 | Backend | InsForge (`@insforge/sdk`) | Postgres, auth, storage |
 | Analytics | PostHog (`posthog-js`, `posthog-node`) | |
+| AI | Google Gemini (`@google/genai`) | Matching, extraction, research synthesis. Client in `lib/gemini.ts`; needs `GEMINI_API_KEY` |
+| Validation | zod **v4** | `z.toJSONSchema()` generates the Gemini response schemas |
 | Language | TypeScript, strict | |
 
-Planned but **not yet installed** — these arrive with the features that need them: Adzuna API (job discovery), OpenAI GPT-4o (matching, extraction, synthesis), Browserbase + Stagehand (company research), `@react-pdf/renderer` and `pdf-parse` (resume generation and parsing), `zod`.
+Planned but **not yet installed** — these arrive with the features that need them: Adzuna API (job discovery), Browserbase + Stagehand (company research), `@react-pdf/renderer` (resume generation).
 
 ---
 

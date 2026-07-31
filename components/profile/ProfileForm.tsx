@@ -4,7 +4,12 @@ import { useState, useTransition } from "react";
 import { Plus } from "lucide-react";
 
 import { saveProfile } from "@/actions/profile";
-import { MAX_WORK_EXPERIENCE, toProfileInput } from "@/lib/profile";
+import {
+  DEGREE_OPTIONS,
+  MAX_WORK_EXPERIENCE,
+  mergeExtraction,
+  toProfileInput,
+} from "@/lib/profile";
 import { TagInput } from "@/components/profile/TagInput";
 import { WorkExperienceCard } from "@/components/profile/WorkExperienceCard";
 import { Button } from "@/components/ui/button";
@@ -17,10 +22,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { Education, Profile, WorkExperience } from "@/types";
+import type {
+  Education,
+  Profile,
+  ProfileExtraction,
+  WorkExperience,
+} from "@/types";
 
 // Option lists mirror the CHECK constraints in db/schema.sql. Degree has no
-// constraint — education is jsonb — so this list is the only definition.
+// constraint — education is jsonb — so DEGREE_OPTIONS in lib/profile.ts is the
+// only definition, shared with the extraction schema.
 const WORK_AUTHORIZATION = [
   { value: "citizen", label: "Citizen" },
   { value: "permanent_resident", label: "Permanent resident" },
@@ -39,15 +50,6 @@ const REMOTE_PREFERENCE = [
   { value: "onsite", label: "Onsite" },
   { value: "hybrid", label: "Hybrid" },
   { value: "any", label: "Any" },
-];
-
-const DEGREES = [
-  "High School",
-  "Associate",
-  "Bachelor's",
-  "Master's",
-  "PhD",
-  "Other",
 ];
 
 // Called from a click handler, never during render — randomUUID() during render
@@ -75,11 +77,14 @@ const parseList = (value: string) =>
 
 type Props = {
   profile: Profile;
+  // Set by ProfileEditor when the resume card finishes reading the PDF. Null
+  // until then, and a new object on each extraction.
+  extraction: ProfileExtraction | null;
 };
 
 type SaveStatus = { kind: "success" | "error"; message: string };
 
-export function ProfileForm({ profile: initialProfile }: Props) {
+export function ProfileForm({ profile: initialProfile, extraction }: Props) {
   const [profile, setProfile] = useState<Profile>(initialProfile);
   const [status, setStatus] = useState<SaveStatus | null>(null);
   const [isSaving, startSaving] = useTransition();
@@ -96,6 +101,26 @@ export function ProfileForm({ profile: initialProfile }: Props) {
   const [locationsText, setLocationsText] = useState(() =>
     listValue(initialProfile.preferred_locations),
   );
+
+  // Applied during render rather than in an effect: an effect would run after
+  // the browser has already painted the fields still empty, so the user would
+  // watch them fill a frame late. React discards this render and re-runs it
+  // before committing anything.
+  //
+  // The guard is identity, not content — ResumeUpload passes a new object each
+  // time, so extracting twice applies twice. That is safe either way, because
+  // mergeExtraction only ever fills blanks.
+  const [appliedExtraction, setAppliedExtraction] =
+    useState<ProfileExtraction | null>(null);
+
+  if (extraction !== appliedExtraction) {
+    setAppliedExtraction(extraction);
+    if (extraction) {
+      setProfile((current) => mergeExtraction(current, extraction));
+      // "Profile saved." next to fields that have just changed is a lie.
+      setStatus(null);
+    }
+  }
 
   // "Profile saved." must not survive the next keystroke — the message would go
   // on claiming the form matches the database while the user edits away from it.
@@ -445,7 +470,7 @@ export function ProfileForm({ profile: initialProfile }: Props) {
                 <SelectValue placeholder="Select" />
               </SelectTrigger>
               <SelectContent>
-                {DEGREES.map((degree) => (
+                {DEGREE_OPTIONS.map((degree) => (
                   <SelectItem key={degree} value={degree}>
                     {degree}
                   </SelectItem>

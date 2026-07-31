@@ -338,7 +338,7 @@ const jobRecord = {
 - Never pass `where` if location is empty — omit the parameter entirely
 - `source` is always `'search'` for Adzuna jobs — never any other value
 - `salary_is_predicted: "1"` means Adzuna estimated the salary — this is normal
-- Adzuna description is a snippet — GPT-4o scores from it, not a full description
+- Adzuna description is a snippet — Gemini scores from it, not a full description
 - Default country to `'us'` — support `gb`, `au`, `ca` as alternatives
 
 ---
@@ -388,7 +388,10 @@ const stagehand = new Stagehand({
   apiKey: process.env.BROWSERBASE_API_KEY!,
   projectId: process.env.BROWSERBASE_PROJECT_ID!,
   browserbaseSessionID: session.id,
-  model: { modelName: "openai/gpt-4o", apiKey: process.env.OPENAI_API_KEY! },
+  model: {
+    modelName: "google/gemini-3.6-flash",
+    apiKey: process.env.GEMINI_API_KEY!,
+  },
   disablePino: true,
 });
 
@@ -441,7 +444,7 @@ Replace the existing Stagehand "Company Research Pattern" section in library-doc
 
 ### Company Research Pattern
 
-Three-step process: homepage extraction → sub-page extraction → GPT-4o synthesis.
+Three-step process: homepage extraction → sub-page extraction → Gemini synthesis.
 Job description and user profile come from DB — never re-fetch what you already have.
 Browser's only job is the company website.
 
@@ -502,7 +505,7 @@ const subPageData = await stagehand.extract({
   }),
 });
 
-// Step 3 — GPT-4o synthesis (after browser closes)
+// Step 3 — Gemini synthesis (after browser closes)
 // Feed three data sources: company research + job from DB + profile from DB
 const systemPrompt = `You are a sharp career strategist preparing a candidate to apply for a specific role. You are given (a) research collected from the company's own website, (b) the job posting, and (c) the candidate's profile. Produce a concise, concrete briefing that gives this specific candidate an edge for this specific role.
 
@@ -542,15 +545,19 @@ Experience: ${profile.years_experience} years, level ${profile.experience_level}
 Skills: ${profile.skills.join(", ")}
 Work history: ${JSON.stringify(profile.work_experience)}`;
 
-const response = await openai.chat.completions.create({
-  model: "gpt-4o",
-  response_format: { type: "json_object" },
-  temperature: 0.4,
-  messages: [
-    { role: "system", content: systemPrompt },
-    { role: "user", content: userPrompt },
-  ],
+const interaction = await getGemini().interactions.create({
+  model: GEMINI_MODEL,
+  system_instruction: systemPrompt,
+  input: userPrompt,
+  response_format: {
+    type: "text",
+    mime_type: "application/json",
+    schema: z.toJSONSchema(dossierSchema),
+  },
+  generation_config: { temperature: 0.4, max_output_tokens: 800 },
 });
+
+const dossier = JSON.parse(interaction.output_text);
 ```
 
 **Dossier fields:**
@@ -572,7 +579,7 @@ const response = await openai.chat.completions.create({
 - Always use `extract()` with a Zod schema — never parse raw HTML or use regex
 - Always wrap every `act()` and `extract()` in try/catch
 - Always call `await stagehand.close()` when done — ends the Browserbase session
-- Model is always `gpt-4o` — never use other models
+- Model always comes from `GEMINI_MODEL` in `lib/gemini.ts` — never hardcode a model string
 - Temperature is `0.4` for synthesis — grounded but flexible enough to make real connections
 - Max 3 sub-pages — never exceed this on free plan
 - Always close session in finally block — never leave sessions open even if research fails
@@ -580,54 +587,144 @@ const response = await openai.chat.completions.create({
 - If browser research returns empty — still run synthesis with job + profile only
 - yourEdge, gapsToAddress, and smartQuestions are the most valuable fields — never skip them
 
-## OpenAI GPT-4o
+## Google Gemini
 
-**Check first:** Check AGENTS.md for an installed OpenAI skill. The skill will have the latest API patterns and model capabilities.
+**Check first:** Check AGENTS.md for an installed Gemini skill. The skill will have the latest API patterns and model capabilities.
+
+**This is not the Gemini SDK you may remember.** `@google/genai` v2 exposes an **Interactions API** — `ai.interactions.create({ input })` returning `interaction.output_text`. The older `ai.models.generateContent({ contents })` / `response.text()` shape is superseded. Read the installed package types before writing code.
+
+Package: `@google/genai` (v2.15.0 at time of writing). Not `openai`, not `@google/generative-ai`.
+
+### Client
+
+`lib/gemini.ts` owns the client and the model string. It follows the `getInsforgeUrl()` convention in `lib/auth.ts` — an accessor that throws on a missing key, not a bare `process.env` read.
+
+```typescript
+import { getGemini, GEMINI_MODEL } from "@/lib/gemini";
+
+const gemini = getGemini();
+```
+
+The client is built on first call, not at import. A module-level `new GoogleGenAI(...)` would throw during `next build` on any machine without the key.
+
+`new GoogleGenAI({})` would read `GEMINI_API_KEY` from the environment by itself, but we pass it explicitly through `getGeminiApiKey()` so a missing key fails with our own message instead of a 401 from Google at the first call.
+
+Server-only, by convention rather than by the `server-only` package — the same convention `lib/profile-schema.ts` uses. `GEMINI_API_KEY` has no `NEXT_PUBLIC_` prefix, so a Client Component that imports this module ships code that can never authenticate.
 
 ### Structured JSON Response
 
+Gemini takes a **JSON Schema**, not a zod schema, and constrains decoding to it. This is a real guarantee, not a prompt instruction — much stronger than the old `json_object` mode.
+
 ```typescript
-import OpenAI from "openai";
+import { z } from "zod";
+import { getGemini, GEMINI_MODEL } from "@/lib/gemini";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
-
-const response = await openai.chat.completions.create({
-  model: "gpt-4o",
-  response_format: { type: "json_object" },
-  temperature: 0.3,
-  messages: [
-    {
-      role: "system",
-      content: "You are a job matching assistant. Return only valid JSON.",
-    },
-    {
-      role: "user",
-      content: `Your prompt here`,
-    },
-  ],
+const matchSchema = z.object({
+  score: z.number().min(0).max(100),
+  reason: z.string(),
+  matchedSkills: z.array(z.string()),
+  missingSkills: z.array(z.string()),
 });
 
-const result = JSON.parse(response.choices[0].message.content!);
+const interaction = await getGemini().interactions.create({
+  model: GEMINI_MODEL,
+  system_instruction: "You are a job matching assistant.",
+  input: `Your prompt here`,
+  response_format: {
+    type: "text",
+    mime_type: "application/json",
+    schema: z.toJSONSchema(matchSchema),
+  },
+  generation_config: {
+    seed: 7,
+    max_output_tokens: 300,
+    thinking_level: "minimal",
+  },
+});
+
+if (!interaction.output_text) throw new Error("no output");
+const result = matchSchema.parse(JSON.parse(interaction.output_text));
 ```
 
-**Temperature settings:**
+**`output_text` is `string | undefined`.** A blocked or truncated interaction returns none, and `JSON.parse(undefined)` throws. Guard it.
 
-- `0.3` — matching, scoring, extraction, research synthesis — deterministic results
-- `0.7` — resume generation — natural variation
+### There is no `temperature` on this API
 
-**Max tokens:**
+`GenerationConfig_2` in v2.15.0 declares exactly ten fields — `image_config`, `max_output_tokens`, `seed`, `speech_config`, `stop_sequences`, `thinking_level`, `thinking_summaries`, `tool_choice`, `transcription_config`, `video_config`. `temperature` survives only on the legacy `models.generateContent` config, so passing it here does not compile.
+
+**Use `seed` instead.** Verified: the same input returns byte-identical output across runs.
+
+### Thinking tokens come out of the output budget
+
+`gemini-3.6-flash` reasons before answering, and `max_output_tokens` covers both. Measured on a two-role resume with an 800 budget:
+
+| `thinking_level` | Thought tokens | Output tokens | Result |
+| --- | --- | --- | --- |
+| default | 767 | 14 | truncated — unparseable JSON |
+| `"minimal"` | 0 | 399 | complete |
+
+A budget overrun does not shorten a field; it returns broken JSON and loses the whole call. For extraction, matching and scoring — transcription and classification, not reasoning — set `thinking_level: "minimal"`. Leave it at default only where the task genuinely needs deliberation.
+
+`z.toJSONSchema()` is built into zod v4 — no converter package. The zod schema stays the single definition: it generates the constraint and validates the result.
+
+### PDF Input — no text extraction step
+
+Gemini reads PDFs natively. Send the bytes; do not run `pdf-parse` first.
+
+```typescript
+const interaction = await getGemini().interactions.create({
+  model: GEMINI_MODEL,
+  input: [
+    { type: "text", text: "Extract this candidate's profile." },
+    {
+      type: "document",
+      data: pdfBuffer.toString("base64"),
+      mime_type: "application/pdf",
+    },
+  ],
+  response_format: {
+    type: "text",
+    mime_type: "application/json",
+    schema: z.toJSONSchema(profileExtractionSchema),
+  },
+});
+```
+
+Limit is 50MB or 1000 pages; each page costs roughly 258 tokens. Our own resume cap is `MAX_RESUME_BYTES` (5MB) from `lib/profile.ts`, far below it, so inline base64 is always sufficient — the Files API is not needed anywhere in this project.
+
+### Models
+
+| Model                   | Use                                                     |
+| ----------------------- | ------------------------------------------------------- |
+| `gemini-3.6-flash`      | Project default — balanced, multimodal, agentic         |
+| `gemini-3.5-flash-lite` | Fallback if rate-limited on the free tier               |
+
+**Determinism.** `seed` on every call. The temperature scale this section used to prescribe (0.3 / 0.4 / 0.7) does not exist on this API — see above. Where the old rule wanted *variation* rather than repeatability, as in resume generation, vary the prompt rather than reaching for a knob the surface does not have.
+
+**Thinking level:**
+
+- `"minimal"` — extraction, matching, scoring. Transcription and classification, where reasoning only eats the budget.
+- default — company research synthesis and resume generation, where connecting ideas is the point.
+
+**Max output tokens** — a budget covering thinking *and* answer. Overrunning it returns unparseable JSON and loses the whole call, so size for the worst case:
 
 - Job matching + scoring: `300`
 - Company research synthesis: `800`
 - Resume generation: `1000`
-- Profile extraction from resume: `800`
+- Profile extraction from resume: `1200` — raised from 800 after measuring a two-role resume at 399 output tokens; three roles with twenty skills lands near the old ceiling. Output is billed as generated, so unused headroom is free.
 
 **Rules:**
 
-- Model string is always `'gpt-4o'` — never use other model names
-- Always use `response_format: { type: 'json_object' }` for structured data
-- Always parse `response.choices[0].message.content` as string — even with json_object it returns a string
-- Always validate parsed JSON before using — wrap in try/catch
+- Model always comes from `GEMINI_MODEL` in `lib/gemini.ts` — never hardcode a model string at a call site
+- Always pass `response_format` with a `schema` for structured data — never ask for JSON in the prompt alone
+- Always derive that schema with `z.toJSONSchema()` from the zod schema that validates the result — never hand-write a second copy
+- The default draft-2020-12 output is accepted, `$schema` / `anyOf` / `additionalProperties` included — verified against a live call. `{ target: "openapi-3.0" }` is available if a future model rejects it
+- Never build one of these schemas from `lib/profile-schema.ts`'s helpers — they end in `.transform()`, and `z.toJSONSchema()` throws on a transform. Avoid `.catch()` too: it converts to a `default` hint rather than a constraint and hides model misbehaviour. Tolerance comes from `.nullish()`
+- Always guard `interaction.output_text` before parsing — it is `string | undefined`
+- Always validate parsed JSON with zod before using — wrap in try/catch
+- Treat schema `maxItems` as a request, not a guarantee — slice after parsing, or an over-long list surfaces later as a save rejected for data the user never entered
+- The free tier is rate-limited per minute and per day. Every call site handles a 429 as a user-visible "try again in a moment", never a crash
+- `GEMINI_API_KEY` is server-only — never `NEXT_PUBLIC_`, never imported into a client component
 - Match threshold is always `MATCH_THRESHOLD` from `lib/utils.ts` — never hardcode 70
 - Company research synthesis must always return a complete dossier — never return empty even if browser research failed
 
@@ -761,32 +858,10 @@ Only use these — others are silently ignored:
 
 ---
 
-## pdf-parse
+## pdf-parse — dropped, do not install
 
-**Check first:** Check AGENTS.md for an installed pdf-parse skill.
+The move from GPT-4o to Gemini removed the need for this package. Gemini accepts a PDF directly as a `{ type: "document" }` input part, so there is no text-extraction step to perform: the model sees the document itself, including layout and column structure that `pdfData.text` flattens away. Image-based resumes that `pdf-parse` returned empty for are read as images.
 
-### Extract Text from Uploaded Resume
+Feature 07 sends the PDF bytes straight to Gemini. See **Google Gemini → PDF Input** above.
 
-```typescript
-import pdf from "pdf-parse";
-
-// In API route handling resume upload
-export async function POST(req: NextRequest) {
-  const formData = await req.formData();
-  const file = formData.get("resume") as File;
-  const arrayBuffer = await file.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-
-  const pdfData = await pdf(buffer);
-  const extractedText = pdfData.text; // raw text content
-
-  // Send to GPT-4o for structured extraction
-}
-```
-
-**Rules:**
-
-- Server-side only — never import in client components
-- `pdfData.text` is raw unformatted text — GPT-4o handles the structure extraction
-- Always handle parse errors — some PDFs are image-based and return empty text
-- If `pdfData.text` is empty or very short — return error to user: "Could not extract text from this PDF. Please try a different file."
+The one thing lost is the cheap pre-flight check — `pdf-parse` could tell us a PDF was unreadable before spending a model call. Gemini answers that only after the call, so the "Could not extract anything from this PDF" error is raised from the extraction result instead: if the model returns every field empty, treat it as a failed extraction and tell the user to try a different file.

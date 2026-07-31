@@ -286,7 +286,7 @@ All environment variables defined in `.env.local` for development. Never hardcod
 | `NEXT_PUBLIC_INSFORGE_ANON_KEY` | lib/insforge-client.ts |
 | `BROWSERBASE_API_KEY`           | lib/browserbase.ts     |
 | `BROWSERBASE_PROJECT_ID`        | lib/browserbase.ts     |
-| `OPENAI_API_KEY`                | agent/ functions       |
+| `GEMINI_API_KEY`                | lib/gemini.ts          |
 | `ADZUNA_APP_ID`                 | lib/adzuna.ts          |
 | `ADZUNA_APP_KEY`                | lib/adzuna.ts          |
 | `NEXT_PUBLIC_POSTHOG_KEY`       | instrumentation-client.ts, lib/posthog-server.ts |
@@ -348,11 +348,10 @@ Approved dependencies for this project:
 - `class-variance-authority`, `clsx`, `tailwind-merge`, `radix-ui`, `tw-animate-css` — installed by shadcn/ui init
 - `@browserbasehq/sdk` — Browserbase sessions
 - `@browserbasehq/stagehand` — AI browser control
-- `openai` — GPT-4o API
+- `@google/genai` — Google Gemini API (v2 Interactions surface)
 - `posthog-js` — PostHog browser client
 - `posthog-node` — PostHog server client
 - `@react-pdf/renderer` — Resume PDF generation
-- `pdf-parse` — Extract text from uploaded PDF
 - `zod` — Schema validation
 - `lucide-react` — Icons
 - `tailwindcss` — Styling
