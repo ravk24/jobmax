@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 
-import { createInsforgeServer, getCurrentUser } from "@/lib/insforge-server";
-import {
-  MAX_RESUME_BYTES,
-  RESUME_BUCKET,
-  resumeObjectKey,
-} from "@/lib/profile";
+import { getCurrentUser } from "@/lib/insforge-server";
+import { MAX_RESUME_BYTES } from "@/lib/profile";
+import { replaceStoredResume } from "@/lib/resume-storage";
 
 const RESUME_FIELD = "resume";
 
@@ -49,45 +46,33 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const insforge = await createInsforgeServer();
+    // Removes the previous object, uploads this one, and writes
+    // resume_pdf_url — shared with generation so the two writers cannot drift.
+    const result = await replaceStoredResume({
+      userId: user.id,
+      email: user.email,
+      file,
+    });
 
-    // Two arguments only — there is no options object. Uploading to an existing
-    // key replaces the object in place, which is the upsert behaviour we want
-    // for the one active resume per user.
-    const { data, error: uploadError } = await insforge.storage
-      .from(RESUME_BUCKET)
-      .upload(resumeObjectKey(user.id), file);
-
-    if (uploadError || !data) {
-      console.error("[api/resume/upload]", uploadError?.message);
+    if (result.status === "error") {
       return NextResponse.json(
-        { success: false, error: "Could not upload your resume." },
-        { status: 500 },
-      );
-    }
-
-    // upsert, not update: someone can upload before ever saving the form, and
-    // an update against a row that does not exist matches nothing and drops the
-    // URL silently. getPublicUrl() is wrong here — the bucket is private, so
-    // the upload response's own url is the one that resolves.
-    const { error: writeError } = await insforge.database
-      .from("profiles")
-      .upsert(
-        { id: user.id, email: user.email, resume_pdf_url: data.url },
-        { onConflict: "id" },
-      );
-
-    if (writeError) {
-      console.error("[api/resume/upload]", writeError.message);
-      return NextResponse.json(
-        { success: false, error: "Could not save your resume." },
+        {
+          success: false,
+          // "Could not upload" alone reads as "nothing happened", which is a lie
+          // when the previous object was already removed — the user may have
+          // just lost a file they cannot replace, and needs to know now rather
+          // than the next time they look for it.
+          error: result.previousResumeRemoved
+            ? "Could not upload your resume, and your previous one has been removed. Please upload a file again."
+            : "Could not upload your resume.",
+        },
         { status: 500 },
       );
     }
 
     revalidatePath("/profile");
 
-    return NextResponse.json({ success: true, data: { url: data.url } });
+    return NextResponse.json({ success: true, data: { url: result.url } });
   } catch (error) {
     console.error("[api/resume/upload]", error);
     return NextResponse.json(

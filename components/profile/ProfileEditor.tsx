@@ -9,7 +9,6 @@ import type { Profile, ProfileExtraction } from "@/types";
 type Props = {
   profile: Profile;
   resumeUrl: string | null;
-  resumeHref: string | null;
 };
 
 // The resume card and the form are siblings that need to talk exactly once: an
@@ -21,7 +20,7 @@ type Props = {
 // raw-text mirrors it keeps for the comma-separated inputs would either move up
 // here, where nothing else knows about comma parsing, or stay behind and go
 // stale, which is the bug those mirrors were added to fix.
-export function ProfileEditor({ profile, resumeUrl, resumeHref }: Props) {
+export function ProfileEditor({ profile, resumeUrl }: Props) {
   const [extraction, setExtraction] = useState<ProfileExtraction | null>(null);
 
   return (
@@ -29,11 +28,7 @@ export function ProfileEditor({ profile, resumeUrl, resumeHref }: Props) {
     // `flex flex-col gap-6`; an element here would make the resume card and the
     // form one flex child and silently swallow the 24px between them.
     <>
-      <ResumeUpload
-        resumeUrl={resumeUrl}
-        resumeHref={resumeHref}
-        onExtracted={setExtraction}
-      />
+      <ResumeUpload resumeUrl={resumeUrl} onExtracted={setExtraction} />
       <ProfileForm profile={profile} extraction={extraction} />
     </>
   );

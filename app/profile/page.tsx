@@ -5,11 +5,7 @@ import { CompletionIndicator } from "@/components/profile/CompletionIndicator";
 import { ProfileEditor } from "@/components/profile/ProfileEditor";
 import { ProfileLoadError } from "@/components/profile/ProfileLoadError";
 import { LOGIN_ROUTE } from "@/lib/auth";
-import {
-  getCurrentUser,
-  getResumeSignedUrl,
-  readProfile,
-} from "@/lib/insforge-server";
+import { getCurrentUser, readProfile } from "@/lib/insforge-server";
 import { blankProfile, calculateCompletion } from "@/lib/profile";
 
 export default async function ProfilePage() {
@@ -38,11 +34,6 @@ export default async function ProfilePage() {
   const profile =
     result.status === "found" ? result.profile : blankProfile(user);
 
-  // Only minted when there is something to link to — no round trip otherwise.
-  const resumeHref = profile.resume_pdf_url
-    ? await getResumeSignedUrl(user.id)
-    : null;
-
   const { percentage, missingFields } = calculateCompletion(profile);
 
   return (
@@ -57,11 +48,7 @@ export default async function ProfilePage() {
           />
           {/* CompletionIndicator stays out here: it is presentational and has
               no part in extraction, so it should not join the client bundle. */}
-          <ProfileEditor
-            profile={profile}
-            resumeUrl={profile.resume_pdf_url}
-            resumeHref={resumeHref}
-          />
+          <ProfileEditor profile={profile} resumeUrl={profile.resume_pdf_url} />
         </div>
       </main>
     </>

@@ -161,7 +161,7 @@ Extract from Resume button — Gemini reads uploaded PDF and auto-fills profile 
 
 ---
 
-### 08 Resume PDF Generation from Profile
+### 08 Resume PDF Generation from Profile — built 2026-07-31
 
 Generate a clean professional PDF resume from current profile data using Gemini.
 
@@ -176,6 +176,16 @@ Generate a clean professional PDF resume from current profile data using Gemini.
 - @react-pdf/renderer renders Gemini output into clean single-page PDF using renderToBuffer()
 - Buffer uploaded to InsForge Storage at resumes/{user_id}/resume.pdf with upsert: true
 - resume_pdf_url updated in profiles table
+
+> **Built differently, deliberately — do not "fix" this back.**
+>
+> - **There is no `upsert: true`, and the buffer is not what gets uploaded.** `storage.upload(path, file)` takes two arguments and a `File | Blob`; overwrite is implicit PUT semantics. `renderToBuffer()` returns a Node `Buffer`, which is not a valid `BlobPart` — it is wrapped as `new File([new Uint8Array(buffer)], …)`. This is the third time this file and `library-docs.md` have described an InsForge storage call that does not exist; both are corrected.
+> - **"Gemini generates resume content" is prose only.** The model returns a summary and per-role bullets. Every fact in the document — name, contact details, links, employers, titles, dates, skills, education — is copied from the profile row. A schema-constrained model asked for the whole document fills empty slots by inventing, and this file goes to employers.
+> - **"Single-page" is enforced upstream.** `@react-pdf/renderer` paginates whatever it is given, so the constraint is a content budget the prompt asks for and the document re-applies.
+> - **Generation is gated and confirmed.** It refuses a profile with no name and no substance, and the button arms before it fires — this write destroys the user's uploaded resume, which nothing else in the app does.
+> - **It reads the saved row, not the open form.** The route takes no body, so unsaved edits are not in the PDF. The confirm copy says so.
+>
+> See `progress-tracker.md § Feature 08`.
 
 ---
 

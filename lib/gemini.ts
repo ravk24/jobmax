@@ -1,4 +1,5 @@
-import { GoogleGenAI } from "@google/genai";
+import { ApiError, GoogleGenAI } from "@google/genai";
+import { z } from "zod";
 
 // Server-only. GEMINI_API_KEY deliberately has no NEXT_PUBLIC_ prefix, so this
 // module is useless in the browser — importing it from a Client Component
@@ -23,4 +24,19 @@ let client: GoogleGenAI | undefined;
 export function getGemini(): GoogleGenAI {
   client ??= new GoogleGenAI({ apiKey: getGeminiApiKey() });
   return client;
+}
+
+// ApiError carries `status`, but the interactions path wraps errors more than
+// once and the class does not always survive it. The structural check catches
+// the wrapped shape without a type assertion.
+const httpErrorShape = z.object({ status: z.number() });
+
+// The free tier is rate-limited per minute and per day, so every call site has
+// to tell "try again in a moment" apart from a real failure. Lives here rather
+// than beside any one caller — it is a property of the API, not of extraction or
+// generation, and a second copy would drift.
+export function isGeminiRateLimited(error: unknown): boolean {
+  if (error instanceof ApiError) return error.status === 429;
+  const parsed = httpErrorShape.safeParse(error);
+  return parsed.success && parsed.data.status === 429;
 }

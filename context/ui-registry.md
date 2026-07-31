@@ -27,11 +27,22 @@ Established while building Feature 01. Every component follows these unless note
 | Card surface      | `bg-surface border border-border rounded-2xl` + card shadow below            |
 | Card shadow       | `shadow-[0px_1px_3px_rgba(0,0,0,0.1),0px_1px_2px_-1px_rgba(0,0,0,0.1)]`      |
 | Section heading   | `text-base leading-6 font-semibold text-text-primary`                        |
-| Body text         | `text-sm leading-6 text-text-secondary`                                      |
+| Body text — app   | `text-sm leading-5 text-text-secondary`                                      |
+| Body text — marketing | `text-sm leading-6 text-text-dark` (or `text-text-secondary`)            |
 | Muted / caption   | `text-xs leading-4 text-text-muted`                                          |
 | Badge             | `rounded-full px-2 py-0.5 text-[10px] leading-4 font-medium`                 |
 | Link hover        | `transition-colors hover:text-text-primary` (or `hover:text-accent` in nav)  |
+| Disabled link     | Render a real `<button disabled>` instead — never a styled `<a>`             |
 | Exports           | Named exports only, one component per file                                   |
+
+**Body text is two tiers, not one** (corrected 2026-07-31 by `/imprint`). This row used to read `text-sm leading-6` for everything, which described the **minority** pattern: the codebase carries 27 uses of `leading-5` against 6 of `leading-6`. The split is not drift — it is coherent and worth keeping:
+
+- **`leading-5` — app surfaces.** Navbar, footer, profile card, form controls, status lines. Dense, functional, sits next to inputs.
+- **`leading-6` — marketing and full-bleed prose.** Hero, BottomCta, FeatureBlock, AuthShowcase, login, `global-error`. Longer sentences, more air.
+
+Phases 3–5 (Find Jobs, Job Details, Dashboard) are all **app surfaces** — they take `leading-5`. Following the old single rule would have made every one of them subtly looser than the profile page beside it.
+
+**Disabling a link means changing the element.** An `<a>` has no `disabled` attribute, so `pointer-events-none` plus reduced opacity leaves it focusable and still announced as an available link. Render a real `<button disabled>` with identical styling for the disabled state and swap between them — see `§ Download button`.
 
 **Responsive type scale** — marketing headings step down on small screens; the `sm:` value is the design value:
 
@@ -430,11 +441,13 @@ Both trackers guard against React StrictMode's development double-invoke with re
 ### Profile page components
 
 Files: `components/profile/{CompletionIndicator,ResumeUpload,ProfileForm,TagInput,WorkExperienceCard}.tsx`
-Last updated: 2026-07-30 (Feature 06 wired persistence)
+Last updated: 2026-07-31 (Feature 08 gave `CompletionIndicator` a complete state)
+
+All three cards share the project card surface verbatim — `rounded-2xl border border-border bg-surface p-6` plus the card shadow. Body copy is `text-sm leading-5 text-text-secondary`, captions `text-xs leading-4 text-text-muted`, headings `text-base leading-6 font-semibold text-text-primary`.
 
 | Component | Notes |
 | --- | --- |
-| `CompletionIndicator` | Banner + SVG ring. Ring is `96px` with `10px` stroke, `-rotate-90` so it starts at 12 o'clock, progress via `strokeDasharray` / `strokeDashoffset`. Track `stroke-error/15`, fill `stroke-error`. Missing-field pills: `rounded-sm bg-error/10 text-error` uppercase |
+| `CompletionIndicator` | Banner + SVG ring, in **two states**. Ring is `96px` with `10px` stroke, `-rotate-90` so it starts at 12 o'clock, progress via `strokeDasharray` / `strokeDashoffset`. Incomplete: `AlertCircle text-error`, "Profile needs attention", track `stroke-error/15`, fill `stroke-error`, missing-field pills `rounded-sm bg-error/10 text-error` uppercase. Complete: `CheckCircle2 text-success-dark`, "Profile complete", track `stroke-success/15`, fill `stroke-success`, no pills. See its own entry below |
 | `ResumeUpload` | `"use client"` since Feature 06. Dropzone is `rounded-xl border border-dashed border-border-muted`; icon in a `size-10 rounded-full bg-accent-muted` circle. Drag-over swaps the dashed border to `border-accent bg-accent-muted` via `transition-colors`. File input is `hidden` and driven by a ref from the Select Resume button. The uploaded filename is an accent link opening in a new tab — `text-accent underline-offset-2 hover:text-accent-dark hover:underline`, with `target="_blank" rel="noopener noreferrer"` |
 | `ProfileForm` | `"use client"`, local state. Sections separated by `border-b border-border pb-8` + `pt-8`, never spacer divs. Two-column rows are `grid gap-4 sm:grid-cols-2`. Submit runs through `useTransition`; the button disables and reads "Saving…" while pending. Carries `noValidate` — see `progress-tracker.md § Feature 06` |
 | `TagInput` | Shared by Skills **and** Industries — build once. Enter is intercepted (`preventDefault`) so it adds a tag instead of submitting the form. Duplicates are ignored silently |
@@ -502,7 +515,9 @@ Pending state comes from `useTransition` for Server Actions and from local state
 Messages are always human-readable. Raw SDK and PostgREST errors are logged with a `[path]` prefix and replaced with plain copy, per `code-standards.md § Error Handling`.
 **If a toast is ever introduced, it replaces this pattern rather than sitting beside it** — two feedback mechanisms for the same class of event is worse than either alone.
 
-**One status line per control, not one per card** (added Feature 07). The resume card now holds two: the upload chain inside the dropzone, and the extraction line below it. Folding them together would let an upload error hide an extraction result, and would put the message inside a surface that opens the file picker when clicked. When a card grows a second async control, give it its own line rather than sharing.
+**One status line per control, not one per card** (added Feature 07). The resume card now holds **three**: the upload chain inside the dropzone, the extraction line below it, and the generation line under the bottom strip (Feature 08). Folding them together would let an upload error hide an extraction result, and would put the message inside a surface that opens the file picker when clicked. When a card grows another async control, give it its own line rather than sharing.
+
+**A degraded success is not styled as a success** (added Feature 08). `POST /api/resume/generate` can succeed while delivering less than the button promised — the PDF is written, but Gemini failed and the wording is the user's own rather than rewritten. That renders in `text-error`, not `text-success-dark`, and the copy says what happened and that a retry may fix it. A green line under a button labelled Generate would tell the user the AI polish worked when it did not, and they would only find out by reading the file they now have to look for a reason to distrust.
 
 ---
 
@@ -525,7 +540,84 @@ Second action in the resume dropzone, appearing only once a resume exists.
 Both buttons disable on either pending flag, so a file cannot be swapped mid-extraction. The dropzone's own `onClick`, `onDrop` and cursor class share that flag.
 `event.stopPropagation()` on both buttons — the dropzone surface opens the file picker, so without it the click reaches two handlers.
 No icon on Extract, so it does not compete with the `FileText` on Generate Resume in the strip below.
-Visibility keys off the resume itself, never off the signed URL — that is null whenever minting fails, even though the object is there and readable.
+Visibility keys off the resume itself. It used to be stated as "never off the signed URL" — the signed URL is gone, but the rule generalises: gate an action on the thing existing, not on a derived handle that can fail to produce.
+
+---
+
+### Download button
+
+File: `components/profile/ResumeUpload.tsx`
+Last updated: 2026-07-31
+
+Third control in the dropzone row, beside Extract from Resume. Renders under the same condition — only once a resume exists, uploaded or generated.
+
+| Property | Class / value |
+| --- | --- |
+| Element | `<Button asChild variant="outline">` wrapping `<a href="/api/resume/download" download>` |
+| Icon | `Download` from `lucide-react`, `size-4`, leading |
+| Label | `Download` |
+| Disabled while busy | **Yes** — swaps to a real `<button disabled>` |
+
+**Pattern notes:**
+**An anchor, not a `fetch`.** A same-origin navigation carries the httpOnly session cookie automatically, so the request is authenticated without a line of JavaScript — and `code-standards.md` reserves client-side `fetch()` for mutations, which a download is not. `asChild` renders the anchor with button styling, so it matches Select Resume and Extract exactly while staying a real link that middle-click and right-click behave normally on.
+**It is the only route to the bytes.** The bucket is private and the browser holds no InsForge credentials, so `GET /api/resume/download` re-reads the session, derives the key from it, and streams the object back. The previously rendered signed-URL link on the filename has been retired — one authenticated path, not two.
+**Disabling an anchor means rendering a different element.** While busy this becomes a genuine `<button disabled>` with the same label and icon, not a link wearing `pointer-events-none` — an anchor has no `disabled` attribute, and faking it lies to assistive technology. Two elements is the honest version. It reads as one control because the styling is identical.
+It was originally left enabled on the reasoning that a read cannot disturb a write. That stopped being true when upload and generation began removing the stored object before writing the new one: for the length of either, there is nothing at the other end of the href. **When a write becomes non-atomic, every read affordance pointing at it needs revisiting.**
+`event.stopPropagation()` like its siblings: the dropzone surface opens the file picker.
+The filename below the buttons is now **plain text**. It was an accent link to the signed URL — a second, more visually prominent way to reach the same file, styled as an action while reading as a label.
+
+---
+
+### CompletionIndicator — the complete state
+
+File: `components/profile/CompletionIndicator.tsx`
+Last updated: 2026-07-31
+
+The banner shipped in Feature 05 with **only** the incomplete state, because the design mock only shows that one. A finished profile therefore rendered a red ring reading 100% under the heading "Profile needs attention" — the component said the opposite of what it measured.
+
+| | Incomplete | Complete |
+| --- | --- | --- |
+| Icon | `AlertCircle` `text-error` | `CheckCircle2` `text-success-dark` |
+| Heading | Profile needs attention | Profile complete |
+| Ring track | `stroke-error/15` | `stroke-success/15` |
+| Ring fill | `stroke-error` | `stroke-success` |
+| Pills | one per missing field | none rendered |
+
+Body copy swaps too — the incomplete version asks the user to fill the gaps, the complete version confirms what they have unlocked (matching and resume generation) rather than just saying "done".
+
+**Pattern notes:**
+**One `aria-live="polite"` over the whole banner, not `role="status"` on the percentage.** The heading, the ring and the number all change together; the announcement worth hearing is "Profile complete", and the percentage alone used to be the only part a screen reader was told about. Do not nest a second live region inside it — some screen readers then announce twice.
+**The state is driven by `missingFields.length === 0`, never by `percentage === 100`.** They agree today because `calculateCompletion()` derives both from the same array, but a percentage rounds — 100 with one field still outstanding is reachable the moment `REQUIRED_FIELDS` stops dividing evenly, and that would congratulate someone whose profile is not finished. The list is the fact; the percentage is a display of it.
+The percentage text stays `text-text-primary` in both states. It is the neutral element the ring colours around it; making it green as well is one signal too many.
+**Any future status banner needs both states designed before it ships.** This one carried a permanent red alert for two features because only the failure case had a mock.
+
+---
+
+### Generate Resume from Profile — two-step destructive confirm
+
+File: `components/profile/ResumeUpload.tsx`
+Last updated: 2026-07-31
+
+The resume card's primary action, in the bottom strip below the dropzone. It **replaces the stored resume**, so it arms on the first click and fires on the second.
+
+| Property           | Class / value                                                                     |
+| ------------------ | --------------------------------------------------------------------------------- |
+| Strip              | `mt-5 flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between` |
+| Button group       | `flex flex-wrap items-center gap-3`                                                |
+| Generate button    | `variant="default"` — the card's one accent action, unchanged from the design mock |
+| Resting label      | `Generate Resume from Profile` with a `FileText` icon                              |
+| Armed label        | `Replace my resume`, **no icon**                                                   |
+| Pending label      | `Generating…`, with `disabled`                                                     |
+| Cancel             | `variant="outline"`, rendered only while armed                                     |
+| Status line        | `mt-3 text-sm leading-5` + `role="status"`, below the strip                        |
+
+**Pattern notes:**
+**The warning lives in the strip copy, not in the button.** Armed, the left-hand line swaps from "Need a fresh document based on the fields below?" to the two things the user cannot otherwise know: that this replaces their current resume, and that it builds from the **last saved profile** rather than unsaved edits in the form below. A button label cannot carry both without becoming a paragraph.
+**No dialog, deliberately.** The project has no dialog component and this does not warrant introducing one. A destructive action that announces itself in place, beside the thing it will destroy, is as clear as a modal and costs no dependency. **Use this pattern for the next destructive action rather than reaching for `alert-dialog`.**
+**The icon is dropped in the armed state.** A document icon beside "Replace my resume" reads as reassurance the action has not earned.
+Cancel is an explicit control rather than click-away — there is no overlay to click away from, so without it the armed state has no visible exit.
+`isGenerating` folds into the card's shared `isBusy`, so generation, upload and extraction cannot race each other, and the dropzone stops accepting drops while a generation is in flight.
+`setUploadedName(null)` runs alongside `router.refresh()` on success: the filename in client state describes the file that was just replaced.
 
 ---
 
@@ -552,6 +644,36 @@ The project's first component that exists **only to carry state between two sibl
 **A transparent wrapper returns a fragment, never a `<div>`.** `app/profile/page.tsx` stacks its sections with `flex flex-col gap-6`. An element here would make the resume card and the form a single flex child, and the 24px between them would disappear — a spacing regression with no visible cause in either component's own classes. Any future component introduced purely to share state between siblings must do the same.
 It owns one piece of state and no styling. Presentational children that take no part in the shared state stay outside it — `CompletionIndicator` remains on the page as a Server Component rather than being pulled into the client bundle for symmetry.
 Nothing visual should ever be added here. The moment this component needs a class, the layout decision has moved into the wrong file.
+
+---
+
+### Generated resume PDF
+
+File: `lib/resume-pdf.tsx`
+Last updated: 2026-07-31
+
+**The only surface in this project that is not the web app**, and the only one Tailwind and `ui-tokens.md` cannot reach. A PDF resolves no CSS variables and no utility classes, so everything here is a literal in a `StyleSheet.create` object. It still has to look like JobMax made it.
+
+| Property | Value |
+| --- | --- |
+| Page | A4, `paddingTop/Bottom 40`, `paddingLeft/Right 48` |
+| Font | `Helvetica` (built in — no `Font.register`, no network fetch at render) |
+| Text — primary | `#101828` (copy of `--color-text-primary`) |
+| Text — secondary | `#6a7282` (copy of `--color-text-secondary`) |
+| Accent | `#7c5cfc` (copy of `--color-accent`) — section headings and links only |
+| Name | `fontSize 22`, `fontWeight bold` |
+| Section heading | `fontSize 10`, `bold`, accent, `marginTop 18`, `marginBottom 7` |
+| Role title | `fontSize 11`, `bold` |
+| Body / bullets | `fontSize 10`, `lineHeight 1.55` (bullets `1.5`) |
+| Dates / contact | `fontSize 9`–`9.5`, secondary |
+| Separator | `  •  ` (two spaces either side), never a border |
+
+**Pattern notes:**
+**Three hex literals, and they are copies rather than choices.** Named against the token they mirror in a comment at the top of the file. They do **not** update themselves — if `ui-tokens.md` changes and the generated resume matters, change it here in the same commit. This file is the single sanctioned exception to the no-hardcoded-hex rule in `AGENTS.md`; nothing else may claim it.
+**Only the CSS properties `library-docs.md` lists are supported.** Anything else is silently ignored by the renderer — no warning, no error, just a layout that does not match the code. Borders and `letterSpacing` are absent for that reason; separation comes from `margin` and `fontWeight`, and the `•` separator stands in for rules.
+**The page budget is a layout constant, not a prompt detail.** `MAX_SUMMARY_CHARS` 400, `MAX_BULLETS_PER_ROLE` 4, `MAX_BULLET_CHARS` 160, 20 skills — exported from this file because the *page* decides how much fits. The prompt asks Gemini for those numbers and the document re-applies them, so a model ignoring the instruction still cannot spill onto page two. Verified: three roles, ten skills, summary, links and education render on exactly one page.
+**Accent is used sparingly on purpose.** Section headings and the links line only. A resume goes to employers; the brand signals the document was designed, it does not decorate it.
+**Every section is conditional.** Summary, experience, skills and education each render only with content, so a thin profile produces a short clean page rather than empty headings.
 
 ---
 

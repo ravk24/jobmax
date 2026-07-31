@@ -61,6 +61,7 @@
 │       ├── resume/
 │       │   ├── upload/route.ts            → Upload resume PDF to Storage, save resume_pdf_url
 │       │   ├── generate/route.ts          → Generate base resume PDF from profile
+│       │   ├── download/route.ts          → Stream the stored resume back, authenticated
 │       │   └── extract/route.ts           → Extract profile data from uploaded resume PDF
 ├── agent/
 │   ├── adzuna.ts                          → Adzuna API job discovery + Gemini scoring
@@ -120,8 +121,11 @@
 │   ├── profile-schema.ts                  → zod write + read schemas (server only — keeps zod out of the client bundle)
 │   ├── insforge-client.ts                 → InsForge browser client instance
 │   ├── insforge-server.ts                 → InsForge server client + getCurrentUser()
-│   ├── gemini.ts                          → Gemini client + GEMINI_MODEL (server only)
+│   ├── gemini.ts                          → Gemini client, GEMINI_MODEL, 429 detection (server only)
 │   ├── resume-extraction.ts               → Resume PDF → structured profile fields (server only)
+│   ├── resume-generation.ts               → Profile → Gemini prose → PDF → Storage (server only)
+│   ├── resume-pdf.tsx                     → @react-pdf/renderer resume layout (server only)
+│   ├── resume-storage.ts                  → The one write path: remove → upload → resume_pdf_url
 │   ├── browserbase.ts                     → Browserbase session creation + management
 │   ├── stagehand.ts                       → Stagehand initialisation with Browserbase session
 │   ├── adzuna.ts                          → Adzuna API client
@@ -499,7 +503,7 @@ Rules the AI agent must never violate:
 - Agent code in `/agent` never imports from `/components` or `/actions`.
 - Server Actions never call agent functions. Agent functions are only called from API routes.
 - All InsForge server-side writes use `createInsforgeServer()` — never the browser client.
-- No hardcoded hex values or raw Tailwind color classes in components — use CSS variables from ui-tokens.md.
+- No hardcoded hex values or raw Tailwind color classes in components — use CSS variables from ui-tokens.md. **One exception: `lib/resume-pdf.tsx`.** A PDF resolves no CSS variables, so the tokens it needs are copied in as literals with a comment saying so. Nothing else may claim this exception.
 - Every Stagehand action is wrapped in try/catch. Failures are logged to agent_logs, never thrown to crash the run.
 - Company research always returns a dossier — even if browser research fails, Gemini synthesizes from company name and job description alone. Never return empty.
 - Browserbase sessions are always closed with stagehand.close() when done — never leave sessions open.

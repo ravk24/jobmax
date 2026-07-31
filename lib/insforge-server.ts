@@ -2,13 +2,8 @@ import { cookies } from "next/headers";
 import { createServerClient } from "@insforge/sdk/ssr";
 
 import { getInsforgeUrl } from "@/lib/auth";
-import { RESUME_BUCKET, resumeObjectKey } from "@/lib/profile";
 import { parseProfileRow } from "@/lib/profile-schema";
 import type { Profile } from "@/types";
-
-// Minted fresh on every /profile render, so it only has to outlive the visit
-// rather than the session.
-const RESUME_LINK_TTL_SECONDS = 60 * 60;
 
 export async function createInsforgeServer() {
   const cookieStore = await cookies();
@@ -26,26 +21,6 @@ export async function getCurrentUser() {
     return null;
   }
   return data.user;
-}
-
-// The resumes bucket is private, so resume_pdf_url cannot be opened in a tab —
-// the browser holds no InsForge credentials, by design: client_type=server keeps
-// the session on our own origin. A signed URL is credential-free and carries its
-// own authorisation, minted only for a caller allowed to read the object.
-export async function getResumeSignedUrl(
-  userId: string,
-): Promise<string | null> {
-  const insforge = await createInsforgeServer();
-  const { data, error } = await insforge.storage
-    .from(RESUME_BUCKET)
-    .createSignedUrl(resumeObjectKey(userId), RESUME_LINK_TTL_SECONDS);
-
-  if (error || !data) {
-    console.error("[lib/insforge-server]", error?.message);
-    return null;
-  }
-
-  return data.signedUrl;
 }
 
 // "No row yet" and "the read failed" must never collapse into one answer. They

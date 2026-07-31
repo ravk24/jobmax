@@ -1,7 +1,6 @@
-import { ApiError } from "@google/genai";
 import { z } from "zod";
 
-import { GEMINI_MODEL, getGemini } from "@/lib/gemini";
+import { GEMINI_MODEL, getGemini, isGeminiRateLimited } from "@/lib/gemini";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import {
   DEGREE_OPTIONS,
@@ -207,17 +206,6 @@ function normalize(parsed: GeminiExtraction): ProfileExtraction {
   };
 }
 
-// ApiError carries `status`, but the interactions path wraps errors more than
-// once and the class may not survive it. The structural check catches the
-// wrapped shape without an assertion.
-const httpErrorShape = z.object({ status: z.number() });
-
-function isRateLimited(error: unknown): boolean {
-  if (error instanceof ApiError) return error.status === 429;
-  const parsed = httpErrorShape.safeParse(error);
-  return parsed.success && parsed.data.status === 429;
-}
-
 // A union rather than { success, error }: the route maps each outcome to its
 // own status code and its own sentence, and user-facing copy belongs to the
 // layer that talks to the user. ProfileReadResult in lib/insforge-server.ts is
@@ -313,6 +301,8 @@ export async function extractProfileFromResume(
       : { status: "extracted", extraction };
   } catch (error) {
     console.error("[lib/resume-extraction]", error);
-    return isRateLimited(error) ? { status: "rate-limited" } : { status: "error" };
+    return isGeminiRateLimited(error)
+      ? { status: "rate-limited" }
+      : { status: "error" };
   }
 }

@@ -144,7 +144,11 @@ export function toProfileInput(profile: Profile): ProfileInput {
 // A role the user added but never filled in. "Add role" seeds a blank entry, so
 // an array of these is not evidence of work history — without this, clicking
 // Add role and then Extract is a silent no-op with nothing to explain it.
-function hasRoleContent(role: WorkExperience): boolean {
+//
+// Exported since Feature 08: generation filters blank roles out before they
+// reach either the prompt or the page, so an empty card the user forgot about
+// does not print as a nameless job.
+export function hasRoleContent(role: WorkExperience): boolean {
   return (
     role.company.trim().length > 0 ||
     role.title.trim().length > 0 ||
@@ -283,6 +287,24 @@ export function isExtractionEmpty(extraction: ProfileExtraction): boolean {
     isFilled(extraction.industries) ||
     (extraction.work_experience ?? []).some(hasRoleContent) ||
     (education !== null && hasEducationContent(education))
+  );
+}
+
+// The floor for generating a resume PDF, and deliberately looser than
+// calculateCompletion(). A resume needs a name at the top and something to put
+// under it; someone with a name and a skills list has a document worth
+// producing even while the completion banner still shows four gaps. Tying
+// generation to is_complete would refuse a perfectly usable partial profile.
+//
+// Checked server-side before the model call: generating from nothing spends a
+// rate-limited free-tier request to produce an empty page, and then overwrites
+// the resume the user already had with it.
+export function canGenerateResume(profile: Profile): boolean {
+  if (!isFilled(profile.full_name)) return false;
+
+  return (
+    (profile.work_experience ?? []).some(hasRoleContent) ||
+    (profile.skills ?? []).length > 0
   );
 }
 

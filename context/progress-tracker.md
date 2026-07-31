@@ -8,8 +8,8 @@ Update this file after every completed feature. Any AI agent reading this should
 
 **Phase:** Phase 2 — Profile Page
 **Last completed:** 05 Profile Page — Full UI (2026-07-30).
-**In progress:** 06 Profile Save Logic and 07 AI Profile Extraction — **both code complete, both awaiting the same signed-in click-through.** Static checks pass throughout; Gemini has been called live from a script but never from the app. 02 Auth is still open on GitHub sign-in and the Log out click.
-**Next:** one walkthrough settles both — extract into a blank profile, then save. See § Feature 07 for the matrix.
+**In progress:** 06 Profile Save Logic, 07 AI Profile Extraction and 08 Resume PDF Generation — **all three code complete, all three awaiting the same signed-in click-through.** Static checks pass throughout. 02 Auth is still open on GitHub sign-in and the Log out click.
+**Next:** one walkthrough settles all three — extract into a blank profile, save, then generate. See § Feature 07 and § Feature 08 for the matrices.
 
 ---
 
@@ -27,7 +27,7 @@ Update this file after every completed feature. Any AI agent reading this should
 - [x] 05 Profile Page — Full UI (mock data, no save logic — Feature 06 wires it)
 - [~] 06 Profile Save Logic — built; awaiting the signed-in click-through
 - [~] 07 AI Profile Extraction from Resume — built; awaiting the same click-through as 06
-- [ ] 08 Resume PDF Generation from Profile
+- [~] 08 Resume PDF Generation from Profile — built; PDF rendering and the Gemini PDF round trip verified offline, the app path awaiting the same click-through
 
 ### Phase 3 — Find Jobs Page
 
@@ -306,6 +306,95 @@ Five questions that had been carried across sessions are now settled. They are d
 #### Not yet verified
 
 **No authenticated extraction has been run.** Unauthenticated `POST /api/resume/extract` returns `401 {"success":false,"error":"You are not signed in."}` (from the proxy, since `/api/resume/:path*` is matched), and `tsc`/`lint` are clean. Everything past the sign-in boundary — `storage.download()`, which still has no other caller in the app; the PDF `{type:"document"}` path, probed only with text; the 429 narrowing; and the merge behaviour in the browser — needs the click-through.
+
+---
+
+### Feature 08 — Resume PDF Generation from Profile (built 2026-07-31)
+
+**Generating overwrites the uploaded resume, and now says so before it does.** The generated PDF goes to `resumes/{user_id}/resume.pdf` — the same key an uploaded resume occupies, per build-plan.md and the one-active-resume-per-user rule in project-overview.md. That makes Generate a destructive action on a file the user may not have a copy of, so the button **arms on the first click** and fires on the second, with the warning in the strip copy rather than in the button label. No dialog: the project has no dialog component and a destructive action that announces itself in place is as clear as a modal without the dependency.
+
+The same confirm copy carries the second thing the user cannot otherwise know: **generation reads the last saved profile, not what is typed in the form.** The route takes no body and calls `readProfile()` itself, exactly as `/api/resume/extract` does — a server route cannot see unsaved client state, and pretending otherwise would silently produce a resume missing whatever was just typed.
+
+**Gemini writes prose; it never touches a fact.** It returns `{ summary, roles: [{ id, bullets }] }` and nothing else. Name, contact details, links, company names, job titles, dates, skills and education are all copied from the profile row into the PDF. The alternative — one call returning the whole document body — was rejected because a schema-constrained decoder fills slots, and an invented institution or date lands in a file the user sends to employers. Same discipline as Feature 07's "extract only what is printed".
+
+**Bullets are keyed by `WorkExperience.id`, not by position.** The model echoes each id back and `toProse()` drops any id that is not on the profile. A reordered or hallucinated role therefore lands nowhere instead of attaching one role's achievements to another.
+
+**`canGenerateResume()` is deliberately looser than `calculateCompletion()`.** It requires `full_name` plus either a role with content or a non-empty skills list. Tying generation to `is_complete` would refuse a perfectly usable partial profile; requiring nothing would spend a rate-limited call to produce an empty page and then overwrite a real resume with it. It lives in `lib/profile.ts` beside `calculateCompletion()`, and `hasRoleContent()` was exported from that file to serve it.
+
+**A 429 refuses; every other model failure degrades and admits it.** These are opposite responses on purpose. A 429 is transient, so "try again in a moment" is real advice and nothing is written. Every other failure is *deterministic* here — the seed is fixed, so the same profile fails the same way forever — and refusing would leave that user permanently unable to generate anything. Those fall back to the candidate's own `responsibilities` text, rendered as written. **The route reports which of the two happened** (`data.polished`), and the "plain" message renders in `text-error` rather than as a success: a document whose wording is the user's own, delivered silently under a button labelled Generate, is less than what was promised — and it has already overwritten what they had.
+
+**`thinking_level: "minimal"` and `max_output_tokens: 2000`, against what library-docs.md prescribed.** The old row said default thinking at 1000. On the one measurement this project has, that pairing spends the budget on thought tokens and returns nothing parseable (Feature 07: 767 thought, 14 emitted, at 800). The instinct that writing benefits from deliberation is not wrong in general, but every fact is supplied here and the task is rewriting the user's own sentences. `library-docs.md` has been corrected rather than deviated from silently.
+
+**`isGeminiRateLimited()` moved into `lib/gemini.ts`.** It was private to `lib/resume-extraction.ts`; Feature 08 is its second caller. It is a property of the API, not of any one call site, and a second copy would drift. `lib/resume-extraction.ts` now imports it.
+
+**`renderToBuffer` returns a `Buffer`, and `storage.upload()` will not take one** — this is the third time an example in `library-docs.md` taught an InsForge storage call that does not exist, after the three-argument `upload()` in Feature 06 and `insforge.from()` in Feature 06. The documented `upload(path, buffer, { contentType, upsert: true })` is wrong in all three of its parts. Corrected before the call site was written.
+
+Two type-level traps behind it, both caught by `tsc`:
+
+- **`Buffer` is not a valid `BlobPart`.** `Buffer` is `Uint8Array<ArrayBufferLike>` and `BlobPart` requires `ArrayBufferView<ArrayBuffer>`; `SharedArrayBuffer` is in `ArrayBufferLike` and is not a valid backing store. `new File([new Uint8Array(buffer)], …)` copies into a plain `ArrayBuffer` and satisfies it with no assertion.
+- **`renderToBuffer` takes `ReactElement<DocumentProps>`, which a JSX element does not satisfy.** `<ResumeDocument … />` types as `JSX.Element` and needs a cast. `ResumeDocument({ profile, prose })` — called as a function, with an annotated return type — type-checks cleanly and keeps `lib/resume-generation.ts` a `.ts` file.
+
+**`lib/resume-pdf.tsx` is the one sanctioned exception to the no-hardcoded-hex rule.** A PDF resolves no CSS variables, so `ui-tokens.md` cannot reach it. Three token values are copied in with a comment saying they are copies and will not update themselves. Only the CSS properties `library-docs.md` lists are used — anything else is silently ignored by the renderer, which reads as a layout bug with no error anywhere. Borders are absent for that reason; separation comes from margin and weight.
+
+**Single-page is enforced upstream, not by the renderer.** `@react-pdf/renderer` paginates whatever it is given. `MAX_SUMMARY_CHARS` (400), `MAX_BULLETS_PER_ROLE` (4), `MAX_BULLET_CHARS` (160) and a 20-skill cap live in `lib/resume-pdf.tsx` as the page budget: the prompt asks the model to fit them and the document re-applies them to whatever comes back, so ignoring the instruction cannot overflow the page. The schema's own `maxLength` is set at double the display cap on purpose — those values constrain decoding, and setting them at the exact limit makes the model stop mid-word. `truncate()` does the real cut, where a clean ellipsis is possible.
+
+**No PostHog event.** The nine in `code-standards.md` are still the only nine.
+
+#### Verified offline, without signing in
+
+Rendered three documents through `renderToBuffer` against a hand-built `Profile` and inspected the bytes:
+
+- **All three are exactly one page** (`/Count 1`), including the fullest case — three roles, ten skills, education, summary, links.
+- **The per-role degrade path works.** A role the model returned no bullets for printed its own `responsibilities` text as a paragraph while its siblings kept their bullets.
+- **The full degrade path renders** (no summary, every role falling back), as does the thinnest profile that passes the gate — name and skills only, no contact line, no history, no education.
+- `canGenerateResume()` returns the right answer for all five cases: full profile, no name, name only, name + skills without roles, and name + a single blank role.
+
+Then **sent the generated PDF back to Gemini** and had it transcribe the page. Every line came back correct — section order, `Mar 2022 — Present`, `Jun 2019 — Feb 2022`, the degraded role as a paragraph. This incidentally closes the biggest hole left by Feature 07: **the `{ type: "document" }` path has now carried a real PDF**, not just the text-only probe. Worth knowing — the call bills the document as **image** modality (532 tokens for one page), so Gemini rasterises rather than reading a text layer. 0 thought tokens at `thinking_level: "minimal"`, confirming the setting behaves as it did in Feature 07.
+
+`npx tsc --noEmit`, `npm run lint` and `npm run build` all clean, with `/api/resume/generate` in the build output. **`serverExternalPackages` was not needed** — Turbopack bundled `@react-pdf/renderer` without complaint, so `next.config.ts` is untouched.
+
+#### Review follow-ups, same day
+
+Three gaps found in review and closed.
+
+**There was no way to download the resume, and the way there was went around our own auth.** `/profile` minted a one-hour `createSignedUrl()` per render and rendered the filename as a link to it. That worked, but it was a network round trip on every page render, it handed out a capability that outlived the visit, and it read as a filename rather than an action — so the feature was effectively undiscoverable.
+
+Replaced by **`GET /api/resume/download`**: it re-reads the session, derives the object key **from the session rather than from a parameter** — so there is no path a caller can supply and no other user's resume to ask for — `download()`s the object with a server client, and streams it back with `Content-Disposition: attachment` and `Cache-Control: no-store` (the object changes, the URL never does). The client is a plain `<a href download>` inside `<Button asChild>`: a same-origin navigation carries the httpOnly cookie by itself, which is both simpler than a `fetch` and the only version that obeys `code-standards.md`'s rule that client components never `fetch()` a read.
+
+`getResumeSignedUrl()` is deleted, along with the `resumeHref` prop threaded through `ProfileEditor`. **One authenticated path to the bytes, not two.**
+
+**`lib/resume-storage.ts` is now the single write path.** The upload route and generation each carried their own copy of upload-then-upsert. They write the same object and the same column, and the failure handling between the steps is exactly what drifts when it is duplicated. `replaceStoredResume({ userId, email, file })` is the only caller of `remove`/`upload`/the `resume_pdf_url` upsert now.
+
+**The previous object is removed before the new one is written**, as asked. Worth being clear about what that does and does not buy, because the honest answer is uncomfortable: the SDK documents standard PUT semantics, so writing to an existing key already replaced the object — both writers use the same key, so there were never orphans to collect. What the delete does add is that the stored object cannot outlive the row pointing at it. What it costs is real: an atomic overwrite becomes two steps, and a failure between them leaves the user with no resume at all.
+
+That window is closed rather than ignored:
+
+- The **delete is best-effort**. There is nothing to remove on a first upload, and that is the ordinary case, not an error — a failure is logged and the upload proceeds, since it replaces the key either way.
+- **A failed upload after a successful delete clears `resume_pdf_url` to null.** The old object is genuinely gone; leaving the URL would render a link that 404s and let extraction and generation read a file that is not there. This is the case that made the shared module worth writing — it is easy to get right once and easy to miss in the second copy.
+
+`resume_pdf_url` is therefore written on exactly three outcomes now: the URL on a successful upload, the URL on a successful generation, and `null` when a replacement destroyed the old object without landing a new one.
+
+#### Second review pass — the delete-first window, closed properly
+
+The first pass at delete-first closed the database side and left the UI and the copy behind. Three findings, one root cause.
+
+**The card kept advertising a file that was gone.** Neither `upload()` nor `generate()` called `router.refresh()` on its failure path, so after a replacement deleted the old object and failed, the server had correctly nulled `resume_pdf_url` while the client still held its mount-time prop — **Extract from Resume and Download stayed on screen**, pointing at nothing. `router.refresh()` now runs in `finally` on both, unconditionally.
+
+**That alone was not enough, and the reason is the more useful lesson.** `currentResume` was `uploadedName ?? (resumeUrl ? "resume.pdf" : null)` — client state ranked *above* the server's answer, so a filename left over from an earlier successful upload kept the buttons visible no matter how many times the page refreshed. Inverted to `resumeUrl ? (uploadedName ?? "resume.pdf") : null`: the server decides whether a resume exists, and `uploadedName` only makes the label nicer than the storage key. The cost is that the buttons appear a beat later on a first upload, once the refresh lands — correct, and worth it.
+
+**"Could not upload your resume." was a lie when the old one had just been deleted.** It reads as "nothing happened". `ResumeWriteResult` and `GenerationOutcome` now carry `previousResumeRemoved`, and both routes say so plainly when it is true. The user may have no other copy of that file; they need to know immediately, not the next time they go looking for it.
+
+**Download is disabled while busy**, having deliberately not been. That was right when upload was an atomic overwrite and wrong the moment deletion came first: for the length of an upload or generation there is genuinely nothing at the other end of the href. It swaps to a real disabled `<button>` rather than an anchor styled to look disabled — an anchor has no `disabled` attribute, and `pointer-events-none` lies to assistive technology.
+
+**A failed first upload no longer creates an empty profile row.** The cleanup path uses `.update()` where the write path uses `.upsert()` — deliberately opposite. Clearing is only meaningful for a row that already holds a URL, so matching zero rows is the correct outcome rather than something to repair.
+
+Also closed: the download route answers a 404 with `text/plain` rather than the JSON envelope (nothing parses it — a person reads it, because the route is reached by navigation); an armed Generate confirm resets when an upload or extraction starts, since it describes a specific stored file; `formatDateRange` renders "Until Jun 2023" for a role with an end and no start, which previously printed a bare date that read as the start; `CompletionIndicator` carries one `aria-live="polite"` over the whole banner instead of `role="status"` on the percentage alone, so the heading change is what gets announced; and `replaceStoredResume` builds one InsForge client instead of two.
+
+#### Not yet verified
+
+**Nothing has run inside the app.** Specifically untested: the generate route end to end, `canGenerateResume` against a real database row, the upload of a generated `File` to InsForge Storage, `resume_pdf_url` surviving a subsequent form save now that a **third** writer touches that column, the two-step confirm in a browser, and the 429 path. The Gemini prose call has never been made — only the transcription call above, which used a different prompt and no `response_format`.
+
+**The review follow-ups are equally unrun**, and two of them touch paths that previously worked: `remove()` has **no other caller anywhere in the app** and has never executed, and the download route is the second-ever caller of `storage.download()`. Upload and extraction both regressed in scope here — re-test them, not just the new button.
 
 ---
 

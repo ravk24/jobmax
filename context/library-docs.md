@@ -220,17 +220,35 @@ await insforge.database
 
 **The `resumes` bucket is private** (`isPublic: false`). `getPublicUrl()` still exists on the SDK, but on a private bucket it returns a URL that resolves for nobody — use the `data.url` the upload response already gives you, and read it back with an authenticated server client.
 
-**`resume_pdf_url` is a server-side handle, not something a browser can open.** The session lives in httpOnly cookies on *our* origin (`client_type=server`), so the browser holds no credentials for the InsForge domain and a plain `<a href={resume_pdf_url}>` fails. To give someone a clickable link, mint a signed URL server-side:
+**`resume_pdf_url` is a server-side handle, not something a browser can open.** The session lives in httpOnly cookies on *our* origin (`client_type=server`), so the browser holds no credentials for the InsForge domain and a plain `<a href={resume_pdf_url}>` fails.
+
+**The browser reaches the bytes through our own route, not through a storage URL.** `GET /api/resume/download` re-reads the session, derives the object key from it, `download()`s the object with a server client and streams it back with `Content-Disposition: attachment`. The client side is a plain `<a href="/api/resume/download" download>` — a same-origin navigation carries the session cookie automatically, so the request is authenticated with no JavaScript, and `code-standards.md` reserves client-side `fetch()` for mutations anyway.
+
+Deriving the key from the session rather than from a query parameter is the point: there is no path a caller can supply and therefore no other user's resume to ask for.
 
 ```typescript
-const { data } = await insforge.storage
-  .from("resumes")
-  .createSignedUrl(`${userId}/resume.pdf`, 60 * 60);
+const { data: blob, error } = await insforge.storage
+  .from(RESUME_BUCKET)
+  .download(resumeObjectKey(user.id));
 
-// data.signedUrl — credential-free, time-limited, safe to put in href
+return new NextResponse(blob, {
+  headers: {
+    "Content-Type": "application/pdf",
+    "Content-Disposition": 'attachment; filename="resume.pdf"',
+    "Cache-Control": "no-store", // the object changes; the URL never does
+  },
+});
 ```
 
-Authorization is enforced when the URL is minted, so the result is a capability scoped to that one object until it expires. `/profile` mints one per render when `resume_pdf_url` is set, and `ResumeUpload` calls `router.refresh()` after an upload — `revalidatePath()` in a route handler invalidates the cache but does not re-render a page that is already open.
+> **`createSignedUrl()` was used for this and is no longer.** `/profile` used to mint a one-hour signed URL on every render and render the filename as a link to it. It worked, but it was a second way to reach the same bytes, it cost a network round trip per page render, and it handed out a capability that outlived the visit. The method still exists and is still correct for a link that must work outside our origin — there is no such case in this project today.
+
+**Deleting:**
+
+```typescript
+const { error } = await insforge.storage.from(RESUME_BUCKET).remove(key);
+```
+
+`remove()` is overloaded for one path or an array of them.
 
 **Storage paths:**
 
@@ -242,6 +260,8 @@ Authorization is enforced when the URL is minted, so the result is a capability 
 - Save `data.url` from the upload response back to the DB — never `getPublicUrl()` on a private bucket
 - Upload with `.upsert()`, not `.update()` — the profile row may not exist yet, and an update matching zero rows drops the URL silently
 - Never write files to disk — always upload the File or Blob directly to storage
+- **Every resume write goes through `replaceStoredResume()` in `lib/resume-storage.ts`** — never call `remove`/`upload`/`upsert` directly from a route. Two writers share one key, and the failure handling between those three steps is what keeps the row and the object agreeing
+- Serve private objects through an own-origin route, never by handing the browser a storage URL
 
 ---
 
@@ -703,15 +723,17 @@ Limit is 50MB or 1000 pages; each page costs roughly 258 tokens. Our own resume 
 
 **Thinking level:**
 
-- `"minimal"` — extraction, matching, scoring. Transcription and classification, where reasoning only eats the budget.
-- default — company research synthesis and resume generation, where connecting ideas is the point.
+- `"minimal"` — extraction, matching, scoring, **and resume generation**. Transcription, classification and rewriting, where reasoning only eats the budget.
+- default — company research synthesis, where connecting three separate sources is the point.
+
+Resume generation moved to `"minimal"` in Feature 08. The instinct that "writing benefits from deliberation" is not wrong, but it is not worth the failure mode here: the task is rewriting the user's own responsibility text into bullets, the facts are all supplied, and a budget overrun does not shorten a bullet — it returns broken JSON and loses the call.
 
 **Max output tokens** — a budget covering thinking *and* answer. Overrunning it returns unparseable JSON and loses the whole call, so size for the worst case:
 
 - Job matching + scoring: `300`
 - Company research synthesis: `800`
-- Resume generation: `1000`
 - Profile extraction from resume: `1200` — raised from 800 after measuring a two-role resume at 399 output tokens; three roles with twenty skills lands near the old ceiling. Output is billed as generated, so unused headroom is free.
+- Resume generation: `2000` — raised from 1000 in Feature 08. It is the largest response in the project: a summary plus up to three roles of bullets. The old figure was set alongside default thinking, a pairing that on the one measurement we have (`800` budget, `767` thought tokens, `14` emitted) returns nothing usable.
 
 **Rules:**
 
@@ -808,53 +830,87 @@ await posthog.shutdown(); // required — ensures event is sent
 
 **Check first:** Check AGENTS.md for an installed react-pdf skill. PDF generation APIs can differ from general training knowledge.
 
+Installed at **4.5.1**. Its peer range is `^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0`, so React 19.2 is supported.
+
 ### Resume PDF Generation
 
 ```typescript
-import { renderToBuffer } from '@react-pdf/renderer'
-import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer'
+// lib/resume-pdf.tsx — server only
+import {
+  Document,
+  Page,
+  Text,
+  View,
+  StyleSheet,
+  type DocumentProps,
+} from "@react-pdf/renderer";
+import type { ReactElement } from "react";
 
 const styles = StyleSheet.create({
-  page: { padding: 30, fontFamily: 'Helvetica' },
+  page: { padding: 36, fontFamily: "Helvetica" },
   section: { marginBottom: 10 },
-  heading: { fontSize: 14, fontWeight: 'bold' },
+  heading: { fontSize: 14, fontWeight: "bold" },
   text: { fontSize: 10 },
-})
+});
 
-const ResumePDF = ({ profile }: { profile: Profile }) => (
-  <Document>
-    <Page size="A4" style={styles.page}>
-      <View style={styles.section}>
-        <Text style={styles.heading}>{profile.fullName}</Text>
-        <Text style={styles.text}>{profile.email}</Text>
-      </View>
-    </Page>
-  </Document>
-)
-
-// Generate buffer
-const buffer = await renderToBuffer(<ResumePDF profile={profile} />)
-
-// Upload directly to InsForge Storage
-await insforge.storage
-  .from('resumes')
-  .upload(`${userId}/resume.pdf`, buffer, {
-    contentType: 'application/pdf',
-    upsert: true
-  })
+export function ResumeDocument({
+  profile,
+}: {
+  profile: Profile;
+}): ReactElement<DocumentProps> {
+  return (
+    <Document>
+      <Page size="A4" style={styles.page}>
+        <View style={styles.section}>
+          <Text style={styles.heading}>{profile.full_name}</Text>
+          <Text style={styles.text}>{profile.email}</Text>
+        </View>
+      </Page>
+    </Document>
+  );
+}
 ```
 
+```typescript
+// lib/resume-generation.ts — a .ts file, no JSX needed
+const buffer = await renderToBuffer(ResumeDocument({ profile, prose }));
+```
+
+**Call the document as a function, do not write it as JSX at the call site.** `renderToBuffer` is typed `(document: ReactElement<DocumentProps>) => Promise<Buffer>`. A JSX element built from a custom component types as `JSX.Element`, which does not carry `DocumentProps` and needs an assertion to pass — and `code-standards.md` forbids assertions without a documented reason. Calling `ResumeDocument({...})` directly returns the annotated `ReactElement<DocumentProps>`, so it type-checks with no cast **and** keeps the calling module a plain `.ts` file.
+
+### Uploading the result — `renderToBuffer` returns a Buffer, `upload()` will not take one
+
+```typescript
+const buffer = await renderToBuffer(ResumeDocument({ profile, prose }));
+
+// Buffer → File. Node 20+ has both File and Blob as globals.
+const file = new File([buffer], "resume.pdf", { type: "application/pdf" });
+
+const { data, error } = await insforge.storage
+  .from(RESUME_BUCKET)
+  .upload(resumeObjectKey(userId), file);
+```
+
+An earlier version of this section taught `upload(path, buffer, { contentType, upsert: true })`. **Every part of that is wrong** and it is the same error the InsForge examples carried before Features 06 and 07 corrected them:
+
+- `upload()` takes **two** arguments. There is no options object, so no `contentType` and no `upsert` flag — overwrite is implicit PUT semantics. See **InsForge → Storage** above.
+- The second argument is `File | Blob`. A Node `Buffer` is neither, so it must be wrapped.
+- The bucket is private, so the URL to persist is the upload response's own `data.url` — never `getPublicUrl()`.
+
 **Supported CSS properties:**
-Only use these — others are silently ignored:
+Only use these — others are silently ignored, so a wrong property reads as a layout bug with no error anywhere:
 `padding, margin, fontSize, color, fontFamily, flexDirection, alignItems, justifyContent, borderRadius, width, height, fontWeight, textAlign, lineHeight`
+
+`ui-tokens.md` does not reach this file — a PDF cannot resolve a CSS variable. `lib/resume-pdf.tsx` is the **one sanctioned exception** to the no-hardcoded-hex rule in `AGENTS.md`, and it says so in a comment at the top so a review does not flag it every pass.
 
 **Rules:**
 
-- Server-side only — never import in client components
-- Always use `renderToBuffer` — not `renderToStream` or `PDFDownloadLink`
-- PDF generation only in `app/api/resume/` routes
-- Generated buffer uploaded directly to InsForge Storage — never written to disk
-- Always save public URL to DB after upload
+- Server-side only — never import in a client component
+- Always `renderToBuffer` — not `renderToStream`, not `PDFDownloadLink`
+- PDF generation only from `app/api/resume/` routes, through `lib/`
+- Wrap the buffer in a `File` before uploading — never pass a `Buffer` to `upload()`
+- Never write the file to disk — upload the `File` straight to storage
+- Save `data.url` from the upload response to `profiles.resume_pdf_url`
 
 ---
 
