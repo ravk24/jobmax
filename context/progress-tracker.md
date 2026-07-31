@@ -6,10 +6,10 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ## Current Status
 
-**Phase:** Phase 2 — Profile Page
-**Last completed:** 05 Profile Page — Full UI (2026-07-30).
+**Phase:** Phase 3 — Find Jobs Page
+**Last completed:** 09 Find Jobs Page — Full UI (2026-07-31), verified in the browser signed in.
 **In progress:** 06 Profile Save Logic, 07 AI Profile Extraction and 08 Resume PDF Generation — **all three code complete, all three awaiting the same signed-in click-through.** Static checks pass throughout. 02 Auth is still open on GitHub sign-in and the Log out click.
-**Next:** one walkthrough settles all three — extract into a blank profile, save, then generate. See § Feature 07 and § Feature 08 for the matrices.
+**Next:** 10 Adzuna Job Discovery — the Find Jobs button and the result banner are already on screen waiting for it. The Feature 06/07/08 walkthrough is still owed and is independent of Phase 3; see § Feature 07 and § Feature 08 for the matrices.
 
 ---
 
@@ -31,7 +31,7 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ### Phase 3 — Find Jobs Page
 
-- [ ] 09 Find Jobs Page — Full UI
+- [x] 09 Find Jobs Page — Full UI (mock data; filter, sort and pagination already run through the URL)
 - [ ] 10 Adzuna Job Discovery
 - [ ] 11 Filter + Sort + Pagination
 
@@ -395,6 +395,40 @@ Also closed: the download route answers a 404 with `text/plain` rather than the 
 **Nothing has run inside the app.** Specifically untested: the generate route end to end, `canGenerateResume` against a real database row, the upload of a generated `File` to InsForge Storage, `resume_pdf_url` surviving a subsequent form save now that a **third** writer touches that column, the two-step confirm in a browser, and the 429 path. The Gemini prose call has never been made — only the transcription call above, which used a different prompt and no `response_format`.
 
 **The review follow-ups are equally unrun**, and two of them touch paths that previously worked: `remove()` has **no other caller anywhere in the app** and has never executed, and the download route is the second-ever caller of `storage.download()`. Upload and extraction both regressed in scope here — re-test them, not just the new button.
+
+---
+
+### Feature 09 — Find Jobs Page UI (2026-07-31)
+
+**Filter, sort and pagination live in the URL, not in component state.** `/find-jobs?q=&match=&sort=&page=` — the page is a Server Component that reads `await searchParams`, and `selectJobs()` in `lib/jobs.ts` is the **one seam Feature 11 replaces**: its body becomes an InsForge `.or().order().range()` query and `lib/jobs-mock.ts` is deleted. No component changes when that happens. Client-side filtering would have been thrown away, and inert controls would have shipped unverified — build-plan.md's "no logic yet" is satisfied by there being no *data* logic, not by the controls being dead.
+
+**The design's five columns win over build-plan.md's six.** Both `build-plan.md` and `project-overview.md` list a SOURCE badge column, and `context/design/find-jobs.png` does not have one. URL import is explicitly out of scope, so `jobs.source` is `'search'` on every row that will ever exist — the column would be constant-valued decoration. The **"Jobs by Adzuna" credit** `project-overview.md` requires instead sits in the table footer beside the results count, so the attribution obligation is met. Same reasoning shape as Feature 01's dashboard-cards decision: the design settles what the two spec files disagree about.
+
+**20 rows per page, not the mock's 6.** `JOBS_PER_PAGE` in `lib/jobs.ts`, per `build-plan.md` Feature 11 and `project-overview.md`. "Showing 1 to 6 of 24" in the design is an illustrative crop. The mock set is 24 rows precisely so page 2 exists and the pager is real.
+
+**Match bar colours still come from `matchScoreBarClass()`.** The design paints 85% and 88% blue; `ui-rules.md` says ≥80 is green. Feature 01 already settled this — the rule wins, the mock's pixels do not. Do not re-litigate it a third time.
+
+**Rows are `<Link>` elements in a CSS grid, not a `<table>`.** The whole row navigates, and a `<tr>` cannot be a link without a stretched-link hack. The grid is `JobsTablePreview`'s, which `ui-registry.md` already named as the reference pattern — stepped up from `text-xs` to the app body scale.
+
+**`/find-jobs/{id}` 404s until Feature 12**, exactly as the nav links did through Phase 1.
+
+**An unscored job is a low match, not an invisible one.** `jobs.match_score` is nullable. `matchesBand()` treats null as 0 so it appears under Low Match rather than being filtered out of every band, and the score sort ranks it with `?? -1` so it sits below a genuine zero. The cell reads "Not scored", not "0%".
+
+**Trimming on one side of a round trip is an infinite loop — found in the browser, not in review.** `parseJobQuery()` trims `q`, and `JobFilters`' debounce originally compared the raw input against it. Type a trailing space and `"react "` came back as `"react"`, which never equals the input's value, so the effect re-fired `router.replace` every 300ms forever. Fixed by trimming on the client too — compare trimmed, navigate trimmed. **Any future URL-state control needs the same invariant: `parse(href(x))` must equal `x`, or the effect that syncs them never settles.**
+
+**`JobFilters` takes the parsed query as a prop rather than calling `useSearchParams()`.** The server has already parsed and defaulted the params; reading them again in the client would be a second parser on the same input, and would opt the tree out of static rendering to re-derive a value that was already passed down.
+
+**Every filter change resets to page 1.** Narrowing the result set while on page 2 otherwise lands on a page that no longer exists. `selectJobs()` also clamps a page past the end rather than rendering an empty table, since the URL is hand-editable.
+
+**Two empty states, saying different things.** "No jobs yet" (nothing has ever been found) and "No jobs match these filters" (+ a Clear filters button). `hasAnyJobs` is a prop precisely so the two cannot collapse into one message. Both use the centred `px-6 py-12` treatment `ProfileLoadError` established, in `text-text-muted` per `ui-rules.md § Empty States` — these are empty, not failed.
+
+**The Find Jobs button is wired to a placeholder, and it is marked as one.** It refuses an empty field and otherwise reveals the design's banner copy. Feature 10 replaces the handler body with `POST /api/agent/find`; the comment in `SearchControls.tsx` says so. **`/api/agent/:path*` must be added to the `proxy.ts` matcher then** — see § Feature 06 for what happens when it is not.
+
+**No new PostHog events and no new dependencies.** The nine in `code-standards.md` are still nine; `job_search_started` belongs to Feature 10. The pager is `<Link>`s rather than a shadcn pagination component.
+
+**Verified in the browser, signed in.** `tsc`, `lint` and `build` clean with `/find-jobs` in the output. Signed out returns 307 to `/login`. Page 1 shows 20 of 24 with Previous disabled; page 2 shows "21 to 24" with Next disabled; the null-salary row renders "—" and the unscored row "Not scored"; green/blue/orange bars all appear. Typing in the filter box updates `?q=` and narrows the rows without losing input focus, High Match combines with it, `?q=zzz` reaches the filtered empty state, and both banner states render. **No horizontal overflow at 1897, 1024 or 430** (`scrollWidth === clientWidth`), with the table scrolling inside its own card at 430.
+
+**`resize_window` in the Chrome extension does not resize a maximised window** — it reports success and the layout viewport stays put, which reads as a page that ignores media queries. Breakpoints were checked by loading `/find-jobs` into a same-origin `<iframe>` of a fixed width instead: media queries resolve against the iframe, the session cookie comes along, and `contentDocument` gives the real `scrollWidth`/`clientWidth`. Cheaper than the headless-Edge-over-CDP route in § Notes when the page needs a session.
 
 ---
 

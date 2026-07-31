@@ -26,6 +26,8 @@ Established while building Feature 01. Every component follows these unless note
 | Section separator | `border-b border-border` on the section, never a spacer div                  |
 | Card surface      | `bg-surface border border-border rounded-2xl` + card shadow below            |
 | Card shadow       | `shadow-[0px_1px_3px_rgba(0,0,0,0.1),0px_1px_2px_-1px_rgba(0,0,0,0.1)]`      |
+| Card padding      | `p-6` content card · `p-3` control strip · **none** on a table card (rows carry `px-6 py-4`) |
+| Uppercase label   | `field-label` utility (11px) for form fields · `text-xs … tracking-wider` (12px) for table column headers · `text-xs … tracking-widest text-accent` for section eyebrows |
 | Section heading   | `text-base leading-6 font-semibold text-text-primary`                        |
 | Body text — app   | `text-sm leading-5 text-text-secondary`                                      |
 | Body text — marketing | `text-sm leading-6 text-text-dark` (or `text-text-secondary`)            |
@@ -43,6 +45,10 @@ Established while building Feature 01. Every component follows these unless note
 Phases 3–5 (Find Jobs, Job Details, Dashboard) are all **app surfaces** — they take `leading-5`. Following the old single rule would have made every one of them subtly looser than the profile page beside it.
 
 **Disabling a link means changing the element.** An `<a>` has no `disabled` attribute, so `pointer-events-none` plus reduced opacity leaves it focusable and still announced as an available link. Render a real `<button disabled>` with identical styling for the disabled state and swap between them — see `§ Download button`.
+
+**Four uppercase micro-labels exist, and they are not interchangeable** (recorded 2026-07-31 by `/imprint`). `field-label` (11px, `0.06em`) belongs to form fields. Table column headers are 12px `tracking-wider` per `ui-rules.md § Table`. Section eyebrows are 12px `tracking-widest` in `text-accent`. `JobsTablePreview` uses a fourth, 10px `tracking-wide`, because it is a shrunken mock — **do not copy that one into real UI.** Pick by role, not by which file you happened to be reading.
+
+**Button geometry comes from a `size` variant, with exactly one recorded exception.** A sweep of every `<Button>` in the project found `size="cta"` (marketing and card actions), `size="lg"` (pager steps, added Feature 09), and one hand-rolled geometry: the Find Jobs submit button — see `§ Search controls card`. If a second hand-rolled button appears, the answer is a new size variant in `button.tsx`, not a second override. Note that `cta` and `lg` are **both `h-9`** and differ only in padding; the names do not say so, so read the variant before assuming a height.
 
 **Responsive type scale** — marketing headings step down on small screens; the `sm:` value is the design value:
 
@@ -296,7 +302,7 @@ Last updated: 2026-07-29
 | Source — url    | `bg-surface-secondary text-text-secondary`                        |
 
 **Pattern notes:**
-This is the mock used on the homepage, but it is the **reference pattern for the real jobs table** in Feature 09 — match it there rather than inventing a second table style.
+This is the mock used on the homepage, and it was the **reference pattern for the real jobs table** — Feature 09 built `components/find-jobs/JobsTable.tsx` from this grid rather than inventing a second table style. See that entry for how the two differ (five columns, app body scale, `<Link>` rows).
 Bar fill colour always comes from `matchScoreBarClass()` in `lib/utils.ts` (≥80 `bg-success`, ≥60 `bg-info`, else `bg-warning`) per ui-rules.md § Match Score Bar. Never hardcode the colour at a call site.
 The fill width is the one sanctioned inline style in the project — a runtime percentage cannot be expressed as a static Tailwind class.
 Source badges use the blue treatment ui-tokens.md documents for LinkedIn, relabelled `Search`/`URL` because `jobs.source` only ever holds those two values.
@@ -674,6 +680,109 @@ Last updated: 2026-07-31
 **The page budget is a layout constant, not a prompt detail.** `MAX_SUMMARY_CHARS` 400, `MAX_BULLETS_PER_ROLE` 4, `MAX_BULLET_CHARS` 160, 20 skills — exported from this file because the *page* decides how much fits. The prompt asks Gemini for those numbers and the document re-applies them, so a model ignoring the instruction still cannot spill onto page two. Verified: three roles, ten skills, summary, links and education render on exactly one page.
 **Accent is used sparingly on purpose.** Section headings and the links line only. A resume goes to employers; the brand signals the document was designed, it does not decorate it.
 **Every section is conditional.** Summary, experience, skills and education each render only with content, so a thin profile produces a short clean page rather than empty headings.
+
+---
+
+### Search controls card
+
+File: `components/find-jobs/SearchControls.tsx`
+Last updated: 2026-07-31
+
+The Find Jobs page's top card — two fields, the accent action, and the result banner beneath them. First page in the project whose primary control is a search rather than a save.
+
+| Property | Class |
+| --- | --- |
+| Card | `rounded-2xl border border-border bg-surface p-6` + card shadow |
+| Field row | `grid gap-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] lg:items-end` |
+| Label | `field-label` utility, control at `mt-2` |
+| Leading icon | `pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-text-muted`, input gets `pl-9` |
+| Submit | `<Button type="submit" className="h-10 gap-2 px-4">` with a `Search` icon — **the project's one hand-rolled button geometry** |
+| Banner (success) | `mt-4 flex items-center gap-2 rounded-md bg-success-lightest px-4 py-3 text-sm leading-5 text-success-dark`, `Sparkles` icon |
+| Banner (error) | same box, `bg-accent-muted text-text-dark`, `AlertCircle` in `text-error` |
+
+**Pattern notes:**
+**The banner is one element in two tints, not two components.** Both carry `role="status"` and the same geometry, so a failure does not change the page's shape — only its colour and glyph. The error tint reuses the login page's inline banner treatment (`bg-accent-muted` + `AlertCircle text-error`), which is the project's error box; the success tint is the design's green.
+**The inputs are the standard `Input` primitive**, `h-10 rounded-md bg-surface-secondary`, not a taller search-specific control. The design draws them slightly larger; a second input treatment beside the profile page's is a worse trade than a few pixels.
+**The submit button carries no `size` variant and overrides the default's height, gap and padding by hand** — `h-10 gap-2 px-4`, which is `size="cta"` plus 4px of height. A sweep found it is the **only** hand-rolled button geometry in the project; every other button in every other component takes a variant. The reason is real: the row is `lg:items-end`, so a `size="cta"` button beside an `h-10` `Input` sits 4px short and the mismatch is obvious. **The rule this sets: a button that sits inside a field row matches the field height.** The second time this is needed, add a size variant to `button.tsx` rather than a second override.
+Only the job-title field carries the magnifier — the location field has none, per the design.
+`noValidate`, like every form in this project. See `progress-tracker.md § Feature 06`.
+
+---
+
+### Filter bar
+
+File: `components/find-jobs/JobFilters.tsx`
+Last updated: 2026-07-31
+
+A control strip, not a form: a borderless text input and two selects that write straight to the URL.
+
+| Property | Class |
+| --- | --- |
+| Card | `rounded-2xl border border-border bg-surface p-3` + card shadow, `flex flex-col gap-3 sm:flex-row sm:items-center` |
+| Text input | `border-transparent bg-transparent pl-9` — the primitive with its surface removed |
+| Divider | `hidden h-6 w-px bg-border sm:block`, `aria-hidden` |
+| Select trigger | `w-full bg-surface sm:w-[160px]` — white, not `surface-secondary` |
+
+**Pattern notes:**
+**A control that sits directly on the card loses its border and background, not its focus ring.** The text input keeps `focus-visible:border-accent focus-visible:ring-1` from the primitive; only the resting surface is stripped. It carries an `aria-label` because it has no visible label — the placeholder is not one.
+**Select triggers are `bg-surface` here**, the one place in the project they are not `bg-surface-secondary`: they sit on a card beside a transparent input rather than inside a form, and the grey would read as a filled field.
+This is the project's first **URL-state** component. It takes the parsed query as a prop instead of calling `useSearchParams()` — the server already parsed it. Selects `push`; the text input `replace`s on a 300ms debounce, so a keystroke does not add a history entry. Both pass `{ scroll: false }`.
+**Trim on both sides or the effect never settles.** `parseJobQuery()` trims `q`, so the debounce must compare and navigate the *trimmed* value — otherwise a trailing space makes the input's value permanently unequal to the parsed one and the effect re-fires forever. Any future URL-state control needs `parse(href(x)) === x`.
+
+---
+
+### Jobs table
+
+File: `components/find-jobs/JobsTable.tsx`
+Last updated: 2026-07-31
+
+The real table `JobsTablePreview` was the reference for. Same grid technique, app body scale, five columns, whole-row links.
+
+| Property | Class |
+| --- | --- |
+| Card | `overflow-hidden rounded-2xl border border-border bg-surface` + card shadow — **no padding**, rows carry it |
+| Scroll | `overflow-x-auto` on the card, `min-w-[840px]` on the inner block |
+| Columns | `grid grid-cols-[1.4fr_1.9fr_1.1fr_1.1fr_1fr] items-center gap-4 px-6 py-4` — one const shared by header and rows |
+| Header | `border-b border-border bg-surface-secondary py-3`, labels `text-xs leading-4 font-medium tracking-wider text-text-secondary uppercase` |
+| Row | `<Link>` + `border-b border-border transition-colors last:border-b-0 hover:bg-surface-secondary` |
+| Company mark | `size-8 rounded-md border border-border bg-surface-secondary`, `Building2 size-4 text-text-muted` |
+| Company name | `truncate text-sm leading-5 font-semibold text-text-primary` |
+| Match bar | track `h-1 w-full max-w-[120px] rounded-full bg-border-light`, fill `matchScoreBarClass(score)`, width by inline style |
+| Empty state | `px-6 py-12 text-center`, `size-10 rounded-full bg-accent-muted` medallion, body `text-sm leading-5 text-text-muted` |
+
+**Pattern notes:**
+**Whole-row navigation makes the row a `<Link>`, so the table is a grid rather than a `<table>`.** A `<tr>` cannot be a link without a stretched-link overlay, which breaks text selection and hover. The grid is `JobsTablePreview`'s, one step up the type scale (`text-sm leading-5` — app surface, per the two-tier body rule above).
+**One `COLUMNS` const for the header and every row.** Two copies is how a column drifts out of alignment with its own label.
+**The card carries no padding and `overflow-hidden`.** The header's grey and the row hover both run edge to edge, and the rounded corners clip them.
+**Two empty states, and they must not collapse into one.** `hasAnyJobs` distinguishes "nothing has ever been found" (`Search`, no CTA — the search card above *is* the next action) from "nothing matches these filters" (`SearchX`, plus a Clear filters button). Copy is `text-text-muted` per `ui-rules.md § Empty States`; a *failure* state would use `text-text-secondary` like `ProfileLoadError`. The `px-6 py-12` centring is the same in both.
+**Null columns render, they do not disappear.** No salary is `—`; no score is the words "Not scored" with no bar, because a 0%-wide bar reads as a genuine zero.
+
+---
+
+### Pagination footer
+
+File: `components/find-jobs/JobsPagination.tsx`
+Last updated: 2026-07-31
+
+The last row inside the jobs card: count and attribution left, pager right.
+
+| Property | Class |
+| --- | --- |
+| Row | `flex flex-col gap-4 border-t border-border px-6 py-4 sm:flex-row sm:items-center sm:justify-between` |
+| Count | `text-sm leading-5 text-text-secondary`, numbers `font-medium text-text-primary` |
+| Credit | `text-text-muted`, ` &middot; Jobs by Adzuna` inline after the count |
+| Step (base) | `<Button variant="outline" size="lg" className="px-3">` — the project's secondary button, widened from `px-2.5` |
+| Step (current) | same button + `border-accent bg-accent-muted text-accent`, `aria-current="page"` |
+| Step (link) | `asChild` wrapping a `<Link>` |
+| Step (disabled) | the same `Button`, `disabled` — a real button, never an anchor |
+| Gap | `px-1 text-sm leading-5 text-text-muted`, `aria-hidden` |
+
+**Pattern notes:**
+**Every step is the `Button` primitive, not a hand-rolled bordered box.** It was built as one and corrected by `/imprint`: the pager steps looked exactly like small secondary buttons, and the Button entry above is explicit that `variant="outline"` **is** the project's secondary button and a second one must not be built. `size="lg"` (h-9) is the closest to the design's step height; only the horizontal padding is overridden. Going through the primitive also picks up the focus ring and the 1% hover zoom for free — check any future "it's just a small bordered box" against this entry first.
+**Previous and Next at the ends are `<Button disabled>`, not styled anchors** — the same rule as the Download button. An `<a>` with no `href` is not a link and `pointer-events-none` lies to assistive technology.
+**"Jobs by Adzuna" lives here**, which is how the attribution `project-overview.md` requires is satisfied without a constant-valued SOURCE column in the table. It is deliberately quiet — `text-text-muted`, inline after the count.
+The pager is hidden entirely at one page; the count line always shows. Page numbers window around the current page with an `&hellip;` marker (1 2 3 … 8), so the row cannot grow with the result set.
+Every step link is built by `jobsHref()` in `lib/jobs.ts`, so `q`, `match` and `sort` survive a page change by construction rather than by each call site remembering to carry them.
 
 ---
 

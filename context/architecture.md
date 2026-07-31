@@ -119,6 +119,8 @@
 │   ├── auth.ts                            → OAuth providers, route constants, env accessor
 │   ├── profile.ts                         → Completion rules, caps, blankProfile (client-safe)
 │   ├── profile-schema.ts                  → zod write + read schemas (server only — keeps zod out of the client bundle)
+│   ├── jobs.ts                            → Find Jobs query rules — parse searchParams, filter, sort, paginate, relative dates
+│   ├── jobs-mock.ts                       → Typed Job[] mock behind Feature 09's UI — DELETED in Feature 11
 │   ├── insforge-client.ts                 → InsForge browser client instance
 │   ├── insforge-server.ts                 → InsForge server client + getCurrentUser()
 │   ├── gemini.ts                          → Gemini client, GEMINI_MODEL, 429 detection (server only)
