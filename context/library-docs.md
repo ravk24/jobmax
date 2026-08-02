@@ -193,9 +193,34 @@ const { error } = await insforge.database
 
 **`.upsert()` only writes the columns present in the payload.** PostgREST's merge-duplicates emits `ON CONFLICT DO UPDATE SET` for the supplied keys and leaves every other column untouched. Feature 06 relies on this: the profile form and the resume upload both upsert the same `profiles` row, and neither clobbers the other because each omits the columns it does not own.
 
+### `.or()` can only be called once per query — found in Feature 10
+
+Two `.or()` calls on the same builder send two `or=` parameters, and PostgREST rejects the request with an empty error message. It is not an AND. A text search worked, the Low Match band worked, and combining them failed — the kind of gap that only appears when two independent filters are exercised together.
+
+Groups that must be ANDed have to be folded into one expression using PostgREST's nested boolean syntax:
+
+```typescript
+// Wrong — two or= params, request rejected
+builder.or("company.ilike.%x%,title.ilike.%x%").or("match_score.lt.70,match_score.is.null");
+
+// Right — one or=, distributed into nested and(...) terms
+builder.or(
+  "and(company.ilike.%x%,match_score.lt.70)," +
+  "and(company.ilike.%x%,match_score.is.null)," +
+  "and(title.ilike.%x%,match_score.lt.70)," +
+  "and(title.ilike.%x%,match_score.is.null)",
+);
+```
+
+A single condition never needs this — keep it as `.eq()` / `.gte()`, which chain and AND normally. Only OR groups collide.
+
+**A value containing a comma must be double-quoted**, or it splits the expression and the query silently means something else. `company.ilike."%Smith, Jones%"`. `%`, `_`, `*` and `\` have no escape on this surface — `\` is LIKE's own escape character and PostgREST gives no way to override it — so strip them rather than passing them through.
+
 **Rules:**
 
 - Always go through `insforge.database.from(...)` — never `insforge.from(...)`
+- Never call `.or()` twice on one query — fold the groups into a single expression
+- Always double-quote an `ilike` value built from user input
 - Always scope queries to `user_id` — never query without user filter
 - Always handle the `error` return — never assume success
 - Use `.single()` when expecting exactly one row, `.maybeSingle()` when zero rows is a normal case
@@ -320,11 +345,28 @@ type AdzunaJob = {
   salary_min?: number;
   salary_max?: number;
   salary_is_predicted: "0" | "1"; // "1" means salary is estimated
-  contract_type?: string;
+  contract_type?: string; // "permanent" | "contract" — often absent
+  contract_time?: string; // "full_time" | "part_time" — often absent
   created: string; // ISO date string
   category: { tag: string; label: string };
 };
 ```
+
+**Everything optional here really is optional.** Verified against the live API in Feature 10: `contract_type` and `contract_time` are frequently both absent, and `salary_min` often equals `salary_max` (a predicted figure), which formats as "$90k - $90k" and reads as a bug. Parse each result on its own so one malformed listing costs that listing, not the whole search.
+
+### `redirect_url` is not an identity — verified 2026-08-02
+
+Two identical searches a second apart return the same listing with a **different `se=` tracking token**. Deduping on the full URL therefore matches nothing, and every repeat search duplicates every row. The path without the query string is stable and carries the Adzuna ad id:
+
+```typescript
+const [canonical] = job.redirect_url.split("?");
+```
+
+`jobs.source_url` holds that canonical form — it is the listing's identity and what the dedupe reads back. `jobs.external_apply_url` holds the full tracked URL, which is what the user clicks.
+
+### `where` takes place names only
+
+There is no remote filter on this endpoint. `where=Remote` matches no place and returns **zero results** — which is the first thing anyone types, since the design's own placeholder reads "Remote, New York...". Strip the word before sending: "Remote" becomes a country-wide search (omit `where` entirely), and "Remote, New York" still searches New York.
 
 ### Saving Jobs to DB
 
@@ -334,15 +376,17 @@ const jobRecord = {
   user_id: userId,
   run_id: runId,
   source: "search", // always 'search' for Adzuna jobs
-  source_url: job.redirect_url,
-  external_apply_url: job.redirect_url,
+  source_url: canonicalJobUrl(job), // stable identity — see above
+  external_apply_url: job.redirect_url, // the tracked link the user clicks
   title: job.title,
   company: job.company.display_name,
-  location: job.location.display_name,
-  salary: job.salary_min
-    ? `$${Math.round(job.salary_min / 1000)}k - $${Math.round(job.salary_max! / 1000)}k`
-    : null,
-  job_type: job.contract_type || "fulltime",
+  location: job.location?.display_name ?? null,
+  // Currency follows the country endpoint, and min === max is common.
+  salary: formatAdzunaSalary(job, country),
+  // NOT `job.contract_type || "fulltime"`. That writes "permanent", which the
+  // jobs_job_type CHECK rejects — failing the entire insert, not one column.
+  // Adzuna splits the two axes; toJobType() in lib/adzuna.ts maps them.
+  job_type: toJobType(job),
   about_role: job.description, // Adzuna returns snippet — used as description
   match_score: scoredJob.matchScore,
   match_reason: scoredJob.matchReason,
@@ -355,11 +399,13 @@ const jobRecord = {
 **Rules:**
 
 - Always include `category=it-jobs` — never search Adzuna without this filter
-- Never pass `where` if location is empty — omit the parameter entirely
+- Never pass `where` if location is empty — omit the parameter entirely, and strip "remote" before deciding whether it is empty
+- Never key a dedupe on `redirect_url` — use the canonical path, which is the only stable part
+- Never map `contract_type` straight onto `jobs.job_type` — the CHECK constraint rejects "permanent"
 - `source` is always `'search'` for Adzuna jobs — never any other value
-- `salary_is_predicted: "1"` means Adzuna estimated the salary — this is normal
+- `salary_is_predicted: "1"` means Adzuna estimated the salary — this is normal, and it is why `salary_min === salary_max` happens
 - Adzuna description is a snippet — Gemini scores from it, not a full description
-- Default country to `'us'` — support `gb`, `au`, `ca` as alternatives
+- Default country to `'us'` — support `gb`, `au`, `ca` as alternatives. Detect from country names only, never city names: a wrong guess returns plausible results for the wrong country
 
 ---
 

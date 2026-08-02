@@ -308,6 +308,21 @@ export function canGenerateResume(profile: Profile): boolean {
   );
 }
 
+// The floor for scoring jobs against a profile, and looser again than
+// canGenerateResume(): a resume needs a name to print at the top, a match score
+// does not. What it needs is something to match against.
+//
+// Checked server-side before the Adzuna call, so an empty profile costs neither
+// a search nor a rate-limited model request to produce ten scores derived from
+// nothing — which would look like real numbers on the page.
+export function canScoreJobs(profile: Profile): boolean {
+  return (
+    (profile.skills ?? []).length > 0 ||
+    (profile.work_experience ?? []).some(hasRoleContent) ||
+    isFilled(profile.current_title)
+  );
+}
+
 export function calculateCompletion(profile: Profile): CompletionResult {
   const missing = REQUIRED_FIELDS.filter((field) =>
     field.key === "education"

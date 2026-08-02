@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { Building2, Search, SearchX } from "lucide-react";
+import { AlertCircle, Building2, Search, SearchX } from "lucide-react";
 
 import { JobsPagination } from "@/components/find-jobs/JobsPagination";
 import { Button } from "@/components/ui/button";
-import { formatFoundAt, type JobQuery, type JobSelection } from "@/lib/jobs";
+import { formatFoundAt, type JobQuery, type JobsResult } from "@/lib/jobs";
 import { cn, matchScoreBarClass } from "@/lib/utils";
 
 const CARD =
@@ -23,17 +23,43 @@ const HEADINGS = [
 ];
 
 type Props = {
-  selection: JobSelection;
+  result: JobsResult;
   query: JobQuery;
-  // Distinguishes "no jobs yet" from "no jobs match these filters" — the two
-  // empty states say completely different things to the user.
-  hasAnyJobs: boolean;
 };
 
-export function JobsTable({ selection, query, hasAnyJobs }: Props) {
+const CENTRED = "px-6 py-12 text-center";
+
+export function JobsTable({ result, query }: Props) {
+  // A failed read is not an empty one. "No jobs yet" while the database is
+  // unreachable tells the user their jobs are gone, and invites them to search
+  // again to fix something that is not their problem. Follows the failure
+  // treatment ProfileLoadError established: the accent-muted medallion with the
+  // error colour in the icon, never an error-tinted circle.
+  if (result.status === "error") {
+    return (
+      <section className={cn(CARD, CENTRED)}>
+        <span className="mx-auto flex size-10 items-center justify-center rounded-full bg-accent-muted">
+          <AlertCircle className="size-5 text-error" />
+        </span>
+
+        <h2 className="mt-4 text-base leading-6 font-semibold text-text-primary">
+          Could not load your jobs
+        </h2>
+
+        <p className="mx-auto mt-1 max-w-md text-sm leading-5 text-text-secondary">
+          Nothing has been lost — the list could not be read just now. Reload
+          the page to try again.
+        </p>
+      </section>
+    );
+  }
+
+  const { selection } = result;
+  const { hasAnyJobs } = selection;
+
   if (selection.total === 0) {
     return (
-      <section className={cn(CARD, "px-6 py-12 text-center")}>
+      <section className={cn(CARD, CENTRED)}>
         <span className="mx-auto flex size-10 items-center justify-center rounded-full bg-accent-muted">
           {hasAnyJobs ? (
             <SearchX className="size-5 text-accent" />

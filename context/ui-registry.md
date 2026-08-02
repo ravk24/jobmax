@@ -686,9 +686,9 @@ Last updated: 2026-07-31
 ### Search controls card
 
 File: `components/find-jobs/SearchControls.tsx`
-Last updated: 2026-07-31
+Last updated: 2026-08-02
 
-The Find Jobs page's top card — two fields, the accent action, and the result banner beneath them. First page in the project whose primary control is a search rather than a save.
+The Find Jobs page's top card — two fields, the accent action, and the result banner beneath them. First page in the project whose primary control is a search rather than a save, and the first whose action is a `fetch` that can take fifteen seconds.
 
 | Property | Class |
 | --- | --- |
@@ -697,10 +697,15 @@ The Find Jobs page's top card — two fields, the accent action, and the result 
 | Label | `field-label` utility, control at `mt-2` |
 | Leading icon | `pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-text-muted`, input gets `pl-9` |
 | Submit | `<Button type="submit" className="h-10 gap-2 px-4">` with a `Search` icon — **the project's one hand-rolled button geometry** |
+| Pending label | `Searching…`, with `disabled` — icon stays |
+| Pending fields | both `Input`s take `disabled={isSearching}` |
 | Banner (success) | `mt-4 flex items-center gap-2 rounded-md bg-success-lightest px-4 py-3 text-sm leading-5 text-success-dark`, `Sparkles` icon |
 | Banner (error) | same box, `bg-accent-muted text-text-dark`, `AlertCircle` in `text-error` |
 
 **Pattern notes:**
+**The icon stays through the pending swap.** Every other pending label in the project drops to text alone (`Saving…`, `Generating…`, `Extracting…`) because those buttons are full-width or in a strip. This one sits in a field row at a fixed height, and removing the icon shifts the label — so `Search` stays and only the words change. **The rule: swap the label, keep the geometry.**
+**The fields disable too, not just the button.** A search that takes fifteen seconds is long enough to retype the query in, and the request already carries the old value. `ResumeUpload`'s `isBusy` does the same for the same reason.
+**One banner, four sentences.** The design supplies one — "Found 8 jobs and saved 4 strong matches." The other three exist because each is a genuinely different outcome: nothing came back, nothing was *new* (the dedupe), or the jobs arrived unscored because the model was busy. A single "success" sentence would have made all four look identical. **Any status line built from server counts needs its zero and its degraded cases written before it ships** — the same lesson `CompletionIndicator` learned by shipping only its failure state.
 **The banner is one element in two tints, not two components.** Both carry `role="status"` and the same geometry, so a failure does not change the page's shape — only its colour and glyph. The error tint reuses the login page's inline banner treatment (`bg-accent-muted` + `AlertCircle text-error`), which is the project's error box; the success tint is the design's green.
 **The inputs are the standard `Input` primitive**, `h-10 rounded-md bg-surface-secondary`, not a taller search-specific control. The design draws them slightly larger; a second input treatment beside the profile page's is a worse trade than a few pixels.
 **The submit button carries no `size` variant and overrides the default's height, gap and padding by hand** — `h-10 gap-2 px-4`, which is `size="cta"` plus 4px of height. A sweep found it is the **only** hand-rolled button geometry in the project; every other button in every other component takes a variant. The reason is real: the row is `lg:items-end`, so a `size="cta"` button beside an `h-10` `Input` sits 4px short and the mismatch is obvious. **The rule this sets: a button that sits inside a field row matches the field height.** The second time this is needed, add a size variant to `button.tsx` rather than a second override.
@@ -734,7 +739,7 @@ This is the project's first **URL-state** component. It takes the parsed query a
 ### Jobs table
 
 File: `components/find-jobs/JobsTable.tsx`
-Last updated: 2026-07-31
+Last updated: 2026-08-02
 
 The real table `JobsTablePreview` was the reference for. Same grid technique, app body scale, five columns, whole-row links.
 
@@ -749,8 +754,10 @@ The real table `JobsTablePreview` was the reference for. Same grid technique, ap
 | Company name | `truncate text-sm leading-5 font-semibold text-text-primary` |
 | Match bar | track `h-1 w-full max-w-[120px] rounded-full bg-border-light`, fill `matchScoreBarClass(score)`, width by inline style |
 | Empty state | `px-6 py-12 text-center`, `size-10 rounded-full bg-accent-muted` medallion, body `text-sm leading-5 text-text-muted` |
+| Failure state | same `CENTRED` box and medallion, `AlertCircle` in `text-error`, body `text-text-secondary` |
 
 **Pattern notes:**
+**Three states, not two — a failed read is not an empty one.** Added in Feature 10, when the table started reading a real table instead of an array that could not fail. Rendering "No jobs yet" while the database is unreachable tells the user their jobs are gone and invites them to search again to fix something that is not their problem. The copy says nothing was lost, exactly as `ProfileLoadError`'s does, and the colour rule is the one already recorded below: empty is `text-text-muted`, failed is `text-text-secondary`. **Whenever a component's data source becomes fallible, its empty state needs splitting.**
 **Whole-row navigation makes the row a `<Link>`, so the table is a grid rather than a `<table>`.** A `<tr>` cannot be a link without a stretched-link overlay, which breaks text selection and hover. The grid is `JobsTablePreview`'s, one step up the type scale (`text-sm leading-5` — app surface, per the two-tier body rule above).
 **One `COLUMNS` const for the header and every row.** Two copies is how a column drifts out of alignment with its own label.
 **The card carries no padding and `overflow-hidden`.** The header's grey and the row hover both run edge to edge, and the rounded corners clip them.

@@ -241,8 +241,8 @@ The events the dashboard charts are built on. Each belongs to a feature that has
 
 | Event                | When                                       | Key Properties             | Status             |
 | -------------------- | ------------------------------------------ | -------------------------- | ------------------ |
-| `job_search_started` | Find Jobs button clicked                   | userId, jobTitle, location | pending Feature 10 |
-| `job_found`          | Each job discovered and saved              | userId, source, matchScore | pending Feature 10 |
+| `job_search_started` | Find Jobs button clicked                   | userId, jobTitle, location | built Feature 10   |
+| `job_found`          | Each job discovered and saved              | userId, source, matchScore | built Feature 10   |
 | `profile_completed`  | User saves complete profile for first time | userId                     | built Feature 06   |
 | `company_researched` | Company research dossier generated         | userId, jobId, company     | pending Feature 13 |
 

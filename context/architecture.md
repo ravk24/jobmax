@@ -64,9 +64,10 @@
 │       │   ├── download/route.ts          → Stream the stored resume back, authenticated
 │       │   └── extract/route.ts           → Extract profile data from uploaded resume PDF
 ├── agent/
-│   ├── adzuna.ts                          → Adzuna API job discovery + Gemini scoring
+│   ├── adzuna.ts                          → Adzuna job discovery — owns the agent_runs record
 │   ├── research.ts                        → Company research — Browserbase + Stagehand + Gemini
-│   ├── matcher.ts                         → Gemini job matching logic
+│   ├── matcher.ts                         → Gemini job matching — one batched call per search
+│   ├── logs.ts                            → agent_logs writes, shared by every agent
 │   ├── extractor.ts                       → Gemini job description extraction + structuring
 │   └── types.ts                           → Agent-specific TypeScript types
 ├── actions/
@@ -119,8 +120,8 @@
 │   ├── auth.ts                            → OAuth providers, route constants, env accessor
 │   ├── profile.ts                         → Completion rules, caps, blankProfile (client-safe)
 │   ├── profile-schema.ts                  → zod write + read schemas (server only — keeps zod out of the client bundle)
-│   ├── jobs.ts                            → Find Jobs query rules — parse searchParams, filter, sort, paginate, relative dates
-│   ├── jobs-mock.ts                       → Typed Job[] mock behind Feature 09's UI — DELETED in Feature 11
+│   ├── jobs.ts                            → Find Jobs URL rules — parse/build searchParams, relative dates (client-safe)
+│   ├── jobs-query.ts                      → The jobs table read — scope, filter, sort, paginate (server only)
 │   ├── insforge-client.ts                 → InsForge browser client instance
 │   ├── insforge-server.ts                 → InsForge server client + getCurrentUser()
 │   ├── gemini.ts                          → Gemini client, GEMINI_MODEL, 429 detection (server only)
@@ -224,7 +225,7 @@ URL saved to profiles table
 
 Resume upload is the one UI-triggered mutation that is **not** a Server Action. Server Action request bodies are capped at 1MB by default (`serverActions.bodySizeLimit`) and the resume card advertises 5MB; route handlers carry no such cap.
 
-**Authenticated API routes must be listed in the `proxy.ts` matcher.** `updateSession()` is the only thing that refreshes an expired access token, so a route left out of the matcher returns 401 as soon as the token ages out, while every protected page silently refreshes and keeps working — an intermittent failure that looks like a broken session. `/api/resume/:path*` is matched for this reason; `/api/agent/*` will need the same when Features 10 and 13 land. `/api/auth/*` stays out: those routes establish the session and must be reachable without one. Route handlers still call `getCurrentUser()` themselves — the proxy refreshes, it does not authorise.
+**Authenticated API routes must be listed in the `proxy.ts` matcher.** `updateSession()` is the only thing that refreshes an expired access token, so a route left out of the matcher returns 401 as soon as the token ages out, while every protected page silently refreshes and keeps working — an intermittent failure that looks like a broken session. `/api/resume/:path*` is matched for this reason, and `/api/agent/:path*` was added in Feature 10. `/api/auth/*` stays out: those routes establish the session and must be reachable without one. Route handlers still call `getCurrentUser()` themselves — the proxy refreshes, it does not authorise.
 
 ---
 

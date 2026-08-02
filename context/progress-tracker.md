@@ -7,9 +7,9 @@ Update this file after every completed feature. Any AI agent reading this should
 ## Current Status
 
 **Phase:** Phase 3 — Find Jobs Page
-**Last completed:** 09 Find Jobs Page — Full UI (2026-07-31), verified in the browser signed in.
+**Last completed:** 10 Adzuna Job Discovery **and 11 Filter + Sort + Pagination** (2026-08-02), verified in the browser signed in against real Adzuna results and real Gemini scores. Feature 11 landed with 10 rather than after it — see § Feature 10.
 **In progress:** 06 Profile Save Logic, 07 AI Profile Extraction and 08 Resume PDF Generation — **all three code complete, all three awaiting the same signed-in click-through.** Static checks pass throughout. 02 Auth is still open on GitHub sign-in and the Log out click.
-**Next:** 10 Adzuna Job Discovery — the Find Jobs button and the result banner are already on screen waiting for it. The Feature 06/07/08 walkthrough is still owed and is independent of Phase 3; see § Feature 07 and § Feature 08 for the matrices.
+**Next:** 12 Job Details Page — `/find-jobs/{id}` is the one link on the page that still 404s, and every row now points at it with a real job id. The Feature 06/07/08 walkthrough is still owed and is independent of Phase 3; see § Feature 07 and § Feature 08 for the matrices.
 
 ---
 
@@ -32,8 +32,8 @@ Update this file after every completed feature. Any AI agent reading this should
 ### Phase 3 — Find Jobs Page
 
 - [x] 09 Find Jobs Page — Full UI (mock data; filter, sort and pagination already run through the URL)
-- [ ] 10 Adzuna Job Discovery
-- [ ] 11 Filter + Sort + Pagination
+- [x] 10 Adzuna Job Discovery — verified against the live API with real Gemini scores
+- [x] 11 Filter + Sort + Pagination — landed with 10, because 10 is unverifiable without it
 
 ### Phase 4 — Job Details Page
 
@@ -400,7 +400,7 @@ Also closed: the download route answers a 404 with `text/plain` rather than the 
 
 ### Feature 09 — Find Jobs Page UI (2026-07-31)
 
-**Filter, sort and pagination live in the URL, not in component state.** `/find-jobs?q=&match=&sort=&page=` — the page is a Server Component that reads `await searchParams`, and `selectJobs()` in `lib/jobs.ts` is the **one seam Feature 11 replaces**: its body becomes an InsForge `.or().order().range()` query and `lib/jobs-mock.ts` is deleted. No component changes when that happens. Client-side filtering would have been thrown away, and inert controls would have shipped unverified — build-plan.md's "no logic yet" is satisfied by there being no *data* logic, not by the controls being dead.
+**Filter, sort and pagination live in the URL, not in component state.** `/find-jobs?q=&match=&sort=&page=` — the page is a Server Component that reads `await searchParams`, and `selectJobs()` in `lib/jobs.ts` was meant to be the **one seam Feature 11 replaces**: its body becomes an InsForge `.or().order().range()` query and `lib/jobs-mock.ts` is deleted, with no component changes. **Corrected 2026-08-02 — both halves of that were wrong.** The function had to move to a server-only `lib/jobs-query.ts` (a Client Component imports this file), and `page.tsx`, `JobsTable.tsx` and the shape of `JobSelection` all changed. See § Feature 10. Client-side filtering would have been thrown away, and inert controls would have shipped unverified — build-plan.md's "no logic yet" is satisfied by there being no *data* logic, not by the controls being dead.
 
 **The design's five columns win over build-plan.md's six.** Both `build-plan.md` and `project-overview.md` list a SOURCE badge column, and `context/design/find-jobs.png` does not have one. URL import is explicitly out of scope, so `jobs.source` is `'search'` on every row that will ever exist — the column would be constant-valued decoration. The **"Jobs by Adzuna" credit** `project-overview.md` requires instead sits in the table footer beside the results count, so the attribution obligation is met. Same reasoning shape as Feature 01's dashboard-cards decision: the design settles what the two spec files disagree about.
 
@@ -429,6 +429,50 @@ Also closed: the download route answers a 404 with `text/plain` rather than the 
 **Verified in the browser, signed in.** `tsc`, `lint` and `build` clean with `/find-jobs` in the output. Signed out returns 307 to `/login`. Page 1 shows 20 of 24 with Previous disabled; page 2 shows "21 to 24" with Next disabled; the null-salary row renders "—" and the unscored row "Not scored"; green/blue/orange bars all appear. Typing in the filter box updates `?q=` and narrows the rows without losing input focus, High Match combines with it, `?q=zzz` reaches the filtered empty state, and both banner states render. **No horizontal overflow at 1897, 1024 or 430** (`scrollWidth === clientWidth`), with the table scrolling inside its own card at 430.
 
 **`resize_window` in the Chrome extension does not resize a maximised window** — it reports success and the layout viewport stays put, which reads as a page that ignores media queries. Breakpoints were checked by loading `/find-jobs` into a same-origin `<iframe>` of a fixed width instead: media queries resolve against the iframe, the session cookie comes along, and `contentDocument` gives the real `scrollWidth`/`clientWidth`. Cheaper than the headless-Edge-over-CDP route in § Notes when the page needs a session.
+
+---
+
+### Feature 10 — Adzuna Job Discovery, with Feature 11 folded in (2026-08-02)
+
+**Feature 11 shipped with Feature 10, not after it.** Built to the letter, Feature 10 writes to a table nothing reads: `/find-jobs` still rendered `MOCK_JOBS`, so a successful search would have shown "Found 10 jobs…" above 23 fake rows, verifiable only by SQL. `code-standards.md` says a feature that cannot be verified immediately is incomplete. The read seam was the cheaper half of the two, and folding it in is what made every check below possible.
+
+**`selectJobs()` moved to a new `lib/jobs-query.ts` rather than staying in `lib/jobs.ts`.** `JobFilters` is a Client Component importing `jobsHref()` and the option lists, so putting `createInsforgeServer` and zod in `lib/jobs.ts` would have shipped both to the browser. Same split as `lib/profile.ts` / `lib/profile-schema.ts`, for the same reason. **§ Feature 09's claim of "one seam" and "no component changes" was wrong on both counts** — `page.tsx`, `JobsTable.tsx` and the shape of `JobSelection` all changed.
+
+**The list query selects six columns, not `*`.** `JobListItem` is a `Pick` of `Job`. A list page has no use for `company_research`, and pulling twenty jsonb dossiers to render six cells is bytes nobody reads. It also removes the need to validate a nested dossier shape Feature 13 has not written yet.
+
+**`redirect_url` is not a stable identity — verified against the live API.** Two identical searches a second apart return the same listing with a different `se=` tracking token, so a dedupe keyed on the full URL matches nothing and **every repeat search would have duplicated every row.** The path without the query string is stable and carries the Adzuna ad id. `source_url` now holds that canonical form and `external_apply_url` holds the full tracked link — one is the listing's identity, the other is what the user clicks. **Any future dedupe on a third-party URL needs this checked first.**
+
+**`where=Remote` returns zero results**, and "Remote" is the first word of the design's own placeholder. Adzuna has no remote filter on this endpoint and `where` matches place names only. `toAdzunaWhere()` drops the word, so "Remote" becomes a country-wide search and "Remote, New York" still searches New York.
+
+**`contract_type` is not our `job_type`.** `library-docs.md` prescribed `job.contract_type || "fulltime"`, which writes `"permanent"` — a value the `jobs_job_type` CHECK rejects, failing the whole insert. Adzuna splits the two axes: `contract_type` is permanent/contract, `contract_time` is full_time/part_time, and both are frequently absent. `toJobType()` maps them. **library-docs.md § Adzuna is now corrected.**
+
+**PostgREST answers an out-of-range offset with 416, not an empty page.** The first implementation fetched the requested page and clamped afterwards, so `?page=99` rendered the read-failure state — telling the user their jobs could not be loaded when the only problem was a number they typed. The count now comes first and the page is clamped before any rows are asked for.
+
+**One batched Gemini call scores all ten jobs, not ten calls.** The free tier is rate-limited per minute, and ten calls fired back to back is the shape most likely to hit it — on the one action the user is watching. Scores are keyed back by the `index` the model was given, never by position in its reply: a model that skips or reorders would otherwise hand every job after it someone else's score, which is wrong in a way that looks entirely plausible.
+
+**A scoring failure is not a search failure.** Verified by breaking `GEMINI_API_KEY`: ten listings still saved with `match_score = null`, the banner said so, and Feature 09's existing null handling caught them — "Not scored" in the cell, Low Match in the band. Throwing away listings that already cost a network call because the scorer was busy would be the worse trade.
+
+**The empty-state pair became a trio.** `JobsTable` now renders a read failure as well, using the `ProfileLoadError` treatment (`bg-accent-muted` medallion, `AlertCircle` in `text-error`). "No jobs yet" while the database is unreachable tells the user their jobs are gone and invites them to fix something that is not their problem.
+
+**`.or()` can only be called once per query — caught in review, not in the first pass of testing.** Two calls send two `or=` params and PostgREST rejects the request outright. The text search worked alone, the Low Match band worked alone, and **only the combination failed** — so testing each filter independently proved nothing about the pair. The two OR groups are now distributed into one nested `or=(and(…),and(…),…)` expression. **The lesson: filters that are independent in the UI are not independent in the query — exercise them together.** Recorded in `library-docs.md § DB Queries`.
+
+**Search text is quoted, not stripped.** A comma in `q` splits PostgREST's `or()` expression and silently changes the query. Wrapping the value in double quotes is PostgREST's own answer and keeps commas, brackets, dots and ampersands searchable — confirmed against a real row titled "Frontend Engineer, Fauna". Only `% _ *` and backslash are dropped: they are LIKE wildcards and LIKE's escape character, and PostgREST gives no way to override the escape, so passing a backslash through makes `a\b` quietly search for `ab`.
+
+**`discoverJobs()` owns the `agent_runs` record**, rather than taking a `runId` as `code-standards.md § Agent Code` sketches. Only the code that can fail knows when to mark a run `failed`, and a route handler writing `agent_runs` is a route holding business logic. `logAgentError()` also carries a `userId` the sketch omits — `agent_logs.user_id` is NOT NULL and its RLS policy compares it to `auth.uid()`.
+
+**The scoring token budget is derived from the batch, not fixed at a number that assumes ten.** `outputTokenBudget(jobs.length)` — `300` per job with a `600` floor, which reproduces the previous 3000 exactly at ten jobs. A comment saying "raise this if you raise `results_per_page`" is not a guard, and overrunning does not shorten a reason: it returns unparseable JSON and loses every score in the call.
+
+**`discoverJobs()` opens its try before the profile read, not after the run is created.** `readProfile()` and `createInsforgeServer()` both throw rather than returning an error, so the original shape let a failure escape the agent function entirely — the route caught it, but no `agent_runs` row was ever marked `failed`. `runId` is now declared outside the try so the catch can tell "failed before a run existed" from "failed during one".
+
+**Location is now optional.** `library-docs.md` forbids sending an empty `where`, so a blank location is a country-wide search rather than a refusal. Only the job title is required.
+
+**Verified in the browser, signed in.** `tsc`, `lint` and `build` clean, `/api/agent/find` in the output. A real search returned 10 jobs in ~14s with a spread of real scores (80/75/55/45/40), real salaries including the `salary_min === salary_max` single-value case, and the button disabled reading "Searching…" throughout. An identical repeat search returned `saved: 0`. High (5) + Low (15) = 20 = total, with all ten unscored rows landing in Low. `?page=99` clamps, every filter **combined with every other** (`q`+high, `q`+low, `q`+low+oldest, a comma-bearing `q`+band) returns the right rows, `?sort=banana&match=nope&page=abc` falls back to the default view, both empty states and the Clear filters button render, a broken `ADZUNA_APP_KEY` returns 502 with the run marked `failed`, and a cookie-less POST returns 401. Console clean.
+
+**Both upstream calls are bounded** — Adzuna at 15s via `AbortSignal.timeout()`, Gemini at 60s via the SDK's second-argument `timeout` option (`interactions.create(params, { timeout })`, which is `GoogleGenAIRequestOptions`). A search is a blocking POST the user watches with the button disabled, so an upstream that never answers has to become a failure rather than a hang. The Gemini ceiling is deliberately generous: overshooting it throws away listings Adzuna has already been paid for, and an unscored save is the better outcome.
+
+**`job_search_started` fires before the work and on every outcome, not only on success.** It was first written inside the `completed` branch, which made the failure rate unmeasurable — the event is the funnel's denominator, and it is the one signal that would show an expired Adzuna key as a cliff rather than as silence. It also stamped the event at completion rather than at the click, distorting any duration derived from it. One PostHog client now spans the request: `flushAt: 1` sends each capture as it happens, and a `finally` guarantees the shutdown on every path, including the 502. **Any event named for a user action belongs at the action, not at its result.**
+
+**PostHog is unverified at the network layer.** Both events fire, the failure path was exercised and logged nothing, but delivery was not decoded from the wire the way Feature 03's events were.
 
 ---
 

@@ -2,11 +2,11 @@
 // in the URL, so the page is a Server Component that reads searchParams and
 // hands them here.
 //
-// selectJobs() is the seam Feature 11 replaces: its body becomes an InsForge
-// .or().order().range() query against the jobs table, and lib/jobs-mock.ts is
-// deleted. Nothing else in this file or in components/find-jobs/ changes.
+// Client-safe by design: JobFilters is a Client Component and imports jobsHref()
+// and the option lists from here. The query that reads the jobs table lives in
+// lib/jobs-query.ts, which is server-only — the same split as lib/profile.ts and
+// lib/profile-schema.ts, and for the same reason.
 
-import { MATCH_THRESHOLD } from "@/lib/utils";
 import type { Job } from "@/types";
 
 export const JOBS_PER_PAGE = 20;
@@ -97,66 +97,32 @@ export function isDefaultQuery(query: JobQuery): boolean {
   );
 }
 
-function matchesText(job: Job, needle: string): boolean {
-  if (!needle) {
-    return true;
-  }
-  return (
-    job.company.toLowerCase().includes(needle) ||
-    job.title.toLowerCase().includes(needle)
-  );
-}
-
-// An unscored job is not a high match, so it belongs in the low band rather
-// than vanishing from every band and becoming unreachable.
-function matchesBand(job: Job, match: MatchFilter): boolean {
-  if (match === "all") {
-    return true;
-  }
-  const score = job.match_score ?? 0;
-  return match === "high" ? score >= MATCH_THRESHOLD : score < MATCH_THRESHOLD;
-}
-
-function compareJobs(sort: JobSort): (a: Job, b: Job) => number {
-  if (sort === "newest") {
-    return (a, b) => Date.parse(b.found_at) - Date.parse(a.found_at);
-  }
-  if (sort === "oldest") {
-    return (a, b) => Date.parse(a.found_at) - Date.parse(b.found_at);
-  }
-  // -1 rather than 0 so an unscored job sorts below a genuine zero.
-  return (a, b) => (b.match_score ?? -1) - (a.match_score ?? -1);
-}
+// The six columns the table renders, and nothing else. Derived from Job rather
+// than hand-written, so a column that changes shape in db/schema.sql is a
+// compile error here rather than a wrong cell.
+export type JobListItem = Pick<
+  Job,
+  "id" | "company" | "title" | "match_score" | "salary" | "found_at"
+>;
 
 export type JobSelection = {
-  jobs: Job[];
+  jobs: JobListItem[];
   total: number;
   page: number;
   pageCount: number;
+  // Distinguishes "no jobs yet" from "no jobs match these filters". It cannot be
+  // derived from `total`, which is 0 in both cases — see lib/jobs-query.ts.
+  hasAnyJobs: boolean;
 };
 
-export function selectJobs(jobs: Job[], query: JobQuery): JobSelection {
-  const needle = query.q.toLowerCase();
-  const filtered = jobs.filter(
-    (job) => matchesText(job, needle) && matchesBand(job, query.match),
-  );
-
-  const sorted = [...filtered].sort(compareJobs(query.sort));
-
-  const total = sorted.length;
-  const pageCount = Math.max(1, Math.ceil(total / JOBS_PER_PAGE));
-  // A page past the end is clamped rather than rendered empty — it is reachable
-  // by editing the URL, and by filtering while deep in a longer result set.
-  const page = Math.min(query.page, pageCount);
-  const start = (page - 1) * JOBS_PER_PAGE;
-
-  return {
-    jobs: sorted.slice(start, start + JOBS_PER_PAGE),
-    total,
-    page,
-    pageCount,
-  };
-}
+// "The read failed" and "there is nothing here" must never collapse into one
+// answer: rendering "No jobs yet" while the database is unreachable tells the
+// user their jobs are gone. Same shape as ProfileReadResult, for the same
+// reason. Declared here rather than beside the query so JobsTable can name it
+// without importing a server-only module.
+export type JobsResult =
+  | { status: "ok"; selection: JobSelection }
+  | { status: "error" };
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;

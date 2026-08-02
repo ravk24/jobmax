@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { AlertCircle, Search, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -10,28 +11,116 @@ import { cn } from "@/lib/utils";
 
 type SearchStatus = { kind: "success" | "error"; message: string };
 
+type SearchData = {
+  found: number;
+  saved: number;
+  strong: number;
+  scored: boolean;
+};
+
+type FindResponse = {
+  success: boolean;
+  data?: SearchData;
+  error?: string;
+};
+
+function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+// The design's sentence is the ordinary case. The other three exist because
+// each is a genuinely different outcome the user needs to tell apart: nothing
+// came back, nothing was new, or the jobs arrived without scores.
+function describeSearch(data: SearchData): SearchStatus {
+  if (data.found === 0) {
+    return {
+      kind: "error",
+      message:
+        "No jobs found for that search. Try a different title, or leave the location blank.",
+    };
+  }
+
+  if (data.saved === 0) {
+    return {
+      kind: "success",
+      message: `No new jobs — all ${plural(data.found, "result is", "results are")} already in your list.`,
+    };
+  }
+
+  if (!data.scored) {
+    return {
+      kind: "success",
+      message: `Saved ${plural(data.saved, "job", "jobs")}, but scoring is busy right now — they are unscored. Try again in a moment.`,
+    };
+  }
+
+  const matches = plural(data.strong, "strong match", "strong matches");
+
+  return {
+    kind: "success",
+    message:
+      data.saved < data.found
+        ? `Found ${plural(data.found, "job", "jobs")}, ${data.saved} new — ${matches}.`
+        : `Found ${plural(data.found, "job", "jobs")} and saved ${matches}.`,
+  };
+}
+
 export function SearchControls() {
+  const router = useRouter();
   const [jobTitle, setJobTitle] = useState("");
   const [location, setLocation] = useState("");
   const [status, setStatus] = useState<SearchStatus | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!jobTitle.trim() || !location.trim()) {
+    // Location is optional: Adzuna must never be sent an empty `where`, so a
+    // blank one becomes a country-wide search rather than a refusal.
+    if (!jobTitle.trim()) {
       setStatus({
         kind: "error",
-        message: "Enter a job title and a location to search.",
+        message: "Enter a job title to search.",
       });
       return;
     }
 
-    // Feature 10 replaces this with POST /api/agent/find and the real counts.
-    // The copy is the design's placeholder until that route exists.
-    setStatus({
-      kind: "success",
-      message: "Found 8 jobs and saved 4 strong matches.",
-    });
+    setStatus(null);
+    setIsSearching(true);
+
+    try {
+      const response = await fetch("/api/agent/find", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobTitle: jobTitle.trim(),
+          location: location.trim(),
+        }),
+      });
+
+      const result: FindResponse = await response.json();
+
+      // Never trusts the status alone: a 200 carrying success: false, or a
+      // success with no payload, is still a failure to report.
+      if (!response.ok || !result.success || !result.data) {
+        setStatus({
+          kind: "error",
+          message: result.error ?? "Could not search for jobs.",
+        });
+        return;
+      }
+
+      setStatus(describeSearch(result.data));
+    } catch (caught) {
+      console.error("[components/find-jobs/SearchControls]", caught);
+      setStatus({ kind: "error", message: "Could not search for jobs." });
+    } finally {
+      setIsSearching(false);
+      // Unconditional: revalidatePath() in the route invalidates the cache but
+      // does not re-render a page that is already open, and the jobs the search
+      // just saved are rendered by the table below this card.
+      router.refresh();
+    }
   }
 
   return (
@@ -52,6 +141,7 @@ export function SearchControls() {
               className="pl-9"
               value={jobTitle}
               placeholder="Frontend Engineer"
+              disabled={isSearching}
               onChange={(event) => setJobTitle(event.target.value)}
             />
           </div>
@@ -66,16 +156,18 @@ export function SearchControls() {
             className="mt-2"
             value={location}
             placeholder="Remote, New York..."
+            disabled={isSearching}
             onChange={(event) => setLocation(event.target.value)}
           />
         </div>
 
         <Button
           type="submit"
+          disabled={isSearching}
           className="h-10 gap-2 px-4 sm:col-span-2 lg:col-span-1"
         >
           <Search className="size-4" />
-          Find Jobs
+          {isSearching ? "Searching…" : "Find Jobs"}
         </Button>
       </div>
 

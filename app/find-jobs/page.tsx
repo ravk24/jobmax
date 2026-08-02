@@ -6,8 +6,8 @@ import { SearchControls } from "@/components/find-jobs/SearchControls";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { LOGIN_ROUTE } from "@/lib/auth";
 import { getCurrentUser } from "@/lib/insforge-server";
-import { parseJobQuery, selectJobs } from "@/lib/jobs";
-import { MOCK_JOBS } from "@/lib/jobs-mock";
+import { parseJobQuery } from "@/lib/jobs";
+import { selectJobs } from "@/lib/jobs-query";
 
 type Props = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -20,10 +20,10 @@ export default async function FindJobsPage({ searchParams }: Props) {
   }
 
   // Filter, sort and page all live in the URL, so the view is shareable and
-  // survives a reload. Feature 11 swaps MOCK_JOBS and the body of selectJobs()
-  // for an InsForge query — nothing below changes.
+  // survives a reload. selectJobs() turns them into one scoped, ordered,
+  // ranged query against the jobs table.
   const query = parseJobQuery(await searchParams);
-  const selection = selectJobs(MOCK_JOBS, query);
+  const result = await selectJobs(user.id, query);
 
   return (
     <>
@@ -35,11 +35,7 @@ export default async function FindJobsPage({ searchParams }: Props) {
 
           <SearchControls />
           <JobFilters query={query} />
-          <JobsTable
-            selection={selection}
-            query={query}
-            hasAnyJobs={MOCK_JOBS.length > 0}
-          />
+          <JobsTable result={result} query={query} />
         </div>
       </main>
     </>

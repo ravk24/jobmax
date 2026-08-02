@@ -111,5 +111,6 @@ export const config = {
     "/profile/:path*",
     "/find-jobs/:path*",
     "/api/resume/:path*",
+    "/api/agent/:path*",
   ],
 };
