@@ -124,6 +124,48 @@ export type JobsResult =
   | { status: "ok"; selection: JobSelection }
   | { status: "error" };
 
+// What the job details page renders, derived from Job for the same reason
+// JobListItem is. company_research is deliberately absent: Feature 12 renders
+// the research card's empty state only, and selecting the column would create a
+// populated case with nothing to render it. Feature 13 adds both together.
+export type JobDetail = Pick<
+  Job,
+  | "id"
+  | "company"
+  | "title"
+  | "location"
+  | "salary"
+  | "job_type"
+  | "about_role"
+  | "match_score"
+  | "match_reason"
+  | "matched_skills"
+  | "missing_skills"
+  | "external_apply_url"
+  | "found_at"
+>;
+
+// Three answers, not two. "empty" covers both a job that does not exist and one
+// belonging to another user — indistinguishable by design, since RLS returns no
+// row either way — and it must stay separate from "error" so a stale link does
+// not report a system failure. Same reasoning as JobsResult above.
+export type JobReadResult =
+  | { status: "found"; job: JobDetail }
+  | { status: "empty" }
+  | { status: "error" };
+
+const JOB_TYPE_LABELS: Record<NonNullable<Job["job_type"]>, string> = {
+  fulltime: "Full-time",
+  parttime: "Part-time",
+  contract: "Contract",
+};
+
+// Feature 10 defaults job_type to "fulltime", so null does not occur on rows we
+// wrote — but the column is nullable and a future import path may leave it so.
+export function formatJobType(jobType: Job["job_type"]): string {
+  return jobType ? JOB_TYPE_LABELS[jobType] : "—";
+}
+
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;

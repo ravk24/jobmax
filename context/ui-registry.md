@@ -63,7 +63,7 @@ Phases 3–5 (Find Jobs, Job Details, Dashboard) are all **app surfaces** — th
 ### Button
 
 File: `components/ui/button.tsx`
-Last updated: 2026-07-29
+Last updated: 2026-08-03
 
 shadcn/ui primitive (radix base, `nova` preset), customised to the JobMax system.
 
@@ -74,6 +74,7 @@ shadcn/ui primitive (radix base, `nova` preset), customised to the JobMax system
 | Variant cta      | `bg-text-black text-surface hover:bg-text-slate` (dark)   |
 | Variant outline  | `border-border bg-surface text-text-primary hover:bg-surface-secondary` |
 | Size cta         | `h-9 gap-2 px-4`                                          |
+| Size xl          | `h-12 gap-2 px-4` — the full-width Apply Now on job details |
 | Hover zoom       | `hover:scale-101` on the base ring, animated by `transition-all` |
 | Focus ring       | `focus-visible:ring-3 focus-visible:ring-ring/50` (ring = accent) |
 
@@ -82,6 +83,7 @@ Two primary treatments exist deliberately. `variant="default"` is the purple but
 `outline` matches ui-tokens.md's Secondary button spec exactly (`bg-surface`, `border-border`) — it is the project's secondary button; do not build a separate one.
 Use `size="cta"` for marketing CTAs; shadcn's default sizes are smaller and suit dense app UI.
 The 1% hover zoom sits on the base ring, so it applies to **every** button in the project, not just the landing page. If it proves too much for dense app UI (tables, form rows), move `hover:scale-101` onto the `cta` and `outline` variants instead.
+`size="xl"` was added in Feature 12 for the job details Apply Now, which the design draws taller than any existing size. It went in here rather than as a `className` override at the call site, which is what the size-variant rule at the top of this file requires — the same reasoning that turned the pagination steps into real `Button`s.
 
 ---
 
@@ -142,7 +144,7 @@ Forms carry **`noValidate`**. Native constraint validation (`type="url"`, `requi
 ### AppNavbar
 
 File: `components/layout/AppNavbar.tsx`
-Last updated: 2026-07-30
+Last updated: 2026-08-03
 
 | Property | Class |
 | --- | --- |
@@ -152,12 +154,16 @@ Last updated: 2026-07-30
 | Item (active) | `border-accent text-accent` |
 | Item (inactive) | `border-transparent text-text-dark hover:text-accent` |
 | Icon | `size-4 shrink-0` — lucide `LayoutGrid`, `Search`, `User` |
+| Account mark | `size-6 shrink-0 text-text-secondary` — lucide `CircleUser`, `aria-hidden` |
+| Sign out | `<LogoutButton />` — `Button variant="outline" size="cta"` + `LogOut` icon |
 
 **Pattern notes:**
 The authenticated counterpart to `Navbar.tsx`. `"use client"` for `usePathname`; active state matches the exact path or any child path.
 The underline is `border-b-2` on a **full-height** item so it lands on the header's own bottom border — a border on the text alone floats above it.
 Labels hide below `sm` and the icons carry the nav; the row would otherwise overflow at 430px.
 Logo is passed `href="/dashboard"`, per the Logo entry below.
+**The account mark is decorative and the Sign out button is real** (added Feature 12, from `context/design/job-details.png`). There is no account menu in this project — `ui-rules.md` allows a top navbar only — so the `CircleUser` glyph is `aria-hidden` and carries no behaviour. It is deliberately **not** the initials avatar recorded under Testimonial: that pattern needs the user's email threaded into a client component, for a mark nobody can click.
+**`LogoutButton` had existed since Feature 02 and was mounted nowhere.** Mounting it here is what finally made the logout path, and the `user_logged_out` event, reachable — a component that nothing imports is not shipped, however finished it looks.
 
 ---
 
@@ -790,6 +796,46 @@ The last row inside the jobs card: count and attribution left, pager right.
 **"Jobs by Adzuna" lives here**, which is how the attribution `project-overview.md` requires is satisfied without a constant-valued SOURCE column in the table. It is deliberately quiet — `text-text-muted`, inline after the count.
 The pager is hidden entirely at one page; the count line always shows. Page numbers window around the current page with an `&hellip;` marker (1 2 3 … 8), so the row cannot grow with the result set.
 Every step link is built by `jobsHref()` in `lib/jobs.ts`, so `q`, `match` and `sort` survive a page change by construction rather than by each call site remembering to carry them.
+
+---
+
+### Job details page
+
+Files: `app/find-jobs/[id]/{page,loading,not-found}.tsx`, `components/job-details/*`
+Last updated: 2026-08-03
+
+Seven stacked cards in a 940px column. Source: `context/design/job-details.png`.
+
+| Property | Class |
+| --- | --- |
+| Column | `mx-auto flex max-w-[940px] flex-col gap-6` inside `flex-1 bg-background px-6 py-8` |
+| Back link | `inline-flex w-fit items-center gap-1 text-sm leading-5 font-medium text-text-secondary transition-colors hover:text-text-primary` + `ChevronLeft size-4` |
+| Page h1 | `text-2xl leading-tight font-bold tracking-tight text-text-primary` |
+| Company mark (large) | `size-12 rounded-xl border border-border bg-surface-secondary`, `Building2 size-5 text-text-muted` |
+| Match pill | `rounded-full px-2 py-0.5 text-[10px] leading-4 font-medium` + `matchScoreBadgeClass(score)` |
+| Match pill (unscored) | same badge + `bg-surface-secondary text-text-secondary`, reading "Not scored" |
+| Stat tile | `flex items-center gap-3 rounded-2xl border border-border bg-surface p-4` + card shadow |
+| Tile medallion | `size-8 rounded-lg` + one of `bg-success-lightest text-success` / `bg-info-lightest text-info-dark` / `bg-accent-muted text-accent` / `bg-surface-secondary text-text-muted`, icon `size-4` |
+| Tile value | `block truncate text-sm leading-5 font-semibold text-text-primary` + `title` attribute |
+| Tile label | `block text-xs leading-4 tracking-wider text-text-muted uppercase` |
+| Section micro-label | `text-xs leading-4 font-semibold tracking-wider text-text-secondary uppercase` |
+| Section heading | `text-base leading-6 font-semibold text-text-primary` + a `size-8 rounded-lg` medallion |
+| Skill chip | `inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs leading-4 font-medium`, icon `size-3` |
+| Skill chip (have) | + `bg-success-lightest text-success-foreground`, `Check` |
+| Skill chip (gap) | + `bg-accent-muted text-accent`, `X` |
+| Card header w/ action | `flex flex-wrap items-center justify-between gap-4 border-b border-border p-6` on an `overflow-hidden` card |
+| Apply button | `<Button size="xl" className="w-full">` |
+| Skeleton block | `rounded-md bg-border-light` inside an `animate-pulse` column |
+
+**Pattern notes:**
+**The match pill uses a different scale from the match bar, and that is not a bug to fix.** `matchScoreBarClass` implements `ui-rules.md § Match Score Bar` (≥80 green, ≥60 blue, <60 orange); `matchScoreBadgeClass` implements `ui-tokens.md § Score Indicators` (≥90 / ≥70 green at two tints, ≥50 orange, else muted). They colour different elements — the bar turns blue at 60 and the pill never does. Both live in `lib/utils.ts` with a comment saying so.
+**Two uppercase micro-labels appear on this page and neither is the accent eyebrow.** AI Match Reasoning and Required Skills use the `text-text-secondary tracking-wider` label, matching the design; the accent `tracking-widest` eyebrow stays reserved for marketing sections. Job Description and Company Research are normal-case section headings instead, because that is what the mock shows — an uppercase micro-label and a section heading are not interchangeable.
+**A stat tile is `p-4`, not the `p-6` content card.** Four small tiles in a row at `p-6` are taller than the content they hold. This is the second sanctioned card padding after the `p-3` control strip.
+**Every section that can be empty has an empty state, and none of them hide.** An unscored job — 10 rows in the database are exactly that — keeps its pill ("Not scored"), its Match Reasoning card and its Skills card, each with one muted line. Hiding cards would make the page change shape between jobs with no explanation. Inside Skills, the two groups hide *individually*: a perfect match has no gap skills, and a "Gap skills" heading over nothing reads as a bug.
+**Null tiles render a dash rather than collapsing**, the same rule the jobs table follows, so the four tiles keep their positions whichever job is open. Location truncates and carries its full text in `title` — the design mock itself shows it clipped.
+**`size="xl"` (h-12) was added to `button.tsx` rather than hand-rolled at the call site**, per the Button entry's rule that a new geometry is a new size variant.
+**Not-found and read-failure are different pages.** `not-found.tsx` uses the empty-state medallion (`SearchX` in `text-accent`) and says the job is not in your list; `JobLoadError` uses the failure medallion (`AlertCircle` in `text-error`) and says nothing was lost. Collapsing them would tell someone with a stale link that the system broke. See the JobsTable entry for the same three-state rule.
+**`loading.tsx` is the first in the project.** Opening a job is a click that waits on a database read, and without it the row click reads as dead. The skeleton mirrors the real layout's rhythm so nothing jumps when content arrives, is `aria-hidden`, and carries one `role="status"` line for screen readers. **The list page's filter/sort/pagination navigation still has no equivalent** — that finding is still open.
 
 ---
 

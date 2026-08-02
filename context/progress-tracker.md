@@ -6,10 +6,10 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ## Current Status
 
-**Phase:** Phase 3 — Find Jobs Page
-**Last completed:** 10 Adzuna Job Discovery **and 11 Filter + Sort + Pagination** (2026-08-02), verified in the browser signed in against real Adzuna results and real Gemini scores. Feature 11 landed with 10 rather than after it — see § Feature 10.
-**In progress:** 06 Profile Save Logic, 07 AI Profile Extraction and 08 Resume PDF Generation — **all three code complete, all three awaiting the same signed-in click-through.** Static checks pass throughout. 02 Auth is still open on GitHub sign-in and the Log out click.
-**Next:** 12 Job Details Page — `/find-jobs/{id}` is the one link on the page that still 404s, and every row now points at it with a real job id. The Feature 06/07/08 walkthrough is still owed and is independent of Phase 3; see § Feature 07 and § Feature 08 for the matrices.
+**Phase:** Phase 4 — Job Details Page
+**Last completed:** 12 Job Details Page (2026-08-03), verified in the browser signed in against real rows — a scored job, an unscored job, both missing-job paths and the loading skeleton. Nothing in the app 404s any more.
+**In progress:** 06 Profile Save Logic, 07 AI Profile Extraction and 08 Resume PDF Generation — **all three code complete, all three awaiting the same signed-in click-through.** Static checks pass throughout. 02 Auth is still open on GitHub sign-in and the Log out click — but the button is now mounted and reachable for the first time, see § Feature 12.
+**Next:** 13 Company Research Agent — the card, its empty state and its button shell are already on the page; Feature 13 supplies the behaviour, the `company_research` column in the query, and the branch that renders the dossier. The Feature 06/07/08 walkthrough is still owed and is independent of Phase 4; see § Feature 07 and § Feature 08 for the matrices.
 
 ---
 
@@ -37,7 +37,7 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ### Phase 4 — Job Details Page
 
-- [ ] 12 Job Details Page — Full UI
+- [x] 12 Job Details Page — Full UI, wired to real rows; Company Research card is the empty state and button shell only
 - [ ] 13 Company Research Agent
 
 ### Phase 5 — Dashboard
@@ -473,6 +473,44 @@ Also closed: the download route answers a 404 with `text/plain` rather than the 
 **`job_search_started` fires before the work and on every outcome, not only on success.** It was first written inside the `completed` branch, which made the failure rate unmeasurable — the event is the funnel's denominator, and it is the one signal that would show an expired Adzuna key as a cliff rather than as silence. It also stamped the event at completion rather than at the click, distorting any duration derived from it. One PostHog client now spans the request: `flushAt: 1` sends each capture as it happens, and a `finally` guarantees the shutdown on every path, including the 502. **Any event named for a user action belongs at the action, not at its result.**
 
 **PostHog is unverified at the network layer.** Both events fire, the failure path was exercised and logged nothing, but delivery was not decoded from the wire the way Feature 03's events were.
+
+---
+
+### Feature 12 — Job Details Page (2026-08-03)
+
+**The two questions this feature was expected to open were closed by reading the design.** § Feature 10 left "backfill Adzuna's `created` and `about_company`, or leave null?" as the next session's first decision. The mock answers both: DATE FOUND is `found_at`, and the company story is the Company Research card, which is Feature 13. **Nothing was backfilled and nothing needed to be.** Adzuna's `created` is still parsed and dropped in `lib/adzuna.ts`; `about_company` is still an unwritten column.
+
+**`project-overview.md` asks for five sections that can never have data.** Its Job Details list (`:86-106`) names Responsibilities, Requirements, Nice to Have, Benefits and About the Company. Feature 10 writes none of them — Adzuna returns a snippet, not a structured posting — so all five columns are permanently null. The page follows the design mock and `build-plan.md:258-275` instead: one Job Description card rendering `about_role`. This is the same call Feature 01 made on the dashboard cards, in the opposite direction: **the disagreement is settled by which source has a design asset behind it and whether the data exists.** Do not add the five sections back without a data source.
+
+**A malformed job id is not-found, not an error — and it took a guard to make it so.** PostgREST answers a non-uuid `id` with `invalid input syntax for type uuid`, which arrives as an *error*, not as zero rows, so `/find-jobs/abc` rendered the read-failure card and told the user the system had broken. `selectJob()` now validates with `z.uuid()` **before** touching the database. This is the third member of a family worth naming: **a user-supplied value reaching Postgres in a shape it rejects looks like an outage.** The others are Feature 10's 416 on an out-of-range page offset and Feature 06's `invalid input syntax for type uuid: "undefined"`.
+
+**`selectJob()` returns three answers, and "empty" covers two different causes on purpose.** A job that does not exist and a job belonging to another user are indistinguishable — RLS returns no row either way — and neither is a failure. `empty` → `notFound()`, `error` → `JobLoadError`. Same discipline as `ProfileReadResult`; see § Feature 06 for why collapsing them is dangerous.
+
+**`company_research` is deliberately absent from `JOB_DETAIL_COLUMNS`.** The card renders its empty state unconditionally. Selecting the column would create a populated case with nothing to render it — a hole that produces a blank card and no error. **Feature 13 adds the column, the dossier branch and the button's behaviour together**, and the button is `disabled` until then rather than pretending to work. `types/index.ts` already carries the 9-field `CompanyResearch` shape.
+
+**Two score scales now exist and neither is wrong.** `matchScoreBarClass` (bars, ui-rules.md: ≥80 green, ≥60 blue, <60 orange) and the new `matchScoreBadgeClass` (pills, ui-tokens.md: ≥90/≥70 green, ≥50 orange, else muted). They were read as a conflict at first; they describe different elements, and the bar turns blue at 60 where the pill never does. Both are commented in `lib/utils.ts` so neither gets "fixed" into the other.
+
+**An unscored job keeps every section.** Ten rows in the database have no score, from Feature 10's broken-Gemini test, so this is a clickable state rather than a hypothetical. The pill reads "Not scored"; Match Reasoning and Skills each render one muted line. Hiding them would change the page's shape between jobs with no explanation, against `ui-rules.md § Empty States`.
+
+**`components/job-details/` deviates from `architecture.md:112-117` in one place.** That list prescribes a single `MatchScore.tsx`; this ships `MatchReasoning.tsx` and `SkillsComparison.tsx`, because they are two independently-empty cards and `code-standards.md:63` is one component per file. `JobInfo`, `JobDescription`, `CompanyResearch` and `JobActions` keep the prescribed names. `JobHeader` and `JobLoadError` are additions.
+
+**`AppNavbar` gained the avatar and Sign out, which unblocked a three-session-old gap.** `LogoutButton.tsx` has existed since Feature 02 and was **imported by nothing** — which is exactly why the logout click and `user_logged_out` were never tested. The design mock shows both on this page, so mounting them was in scope, and it fixes every authenticated page at once. **A finished component that nothing imports is not shipped.**
+
+**`loading.tsx` and `not-found.tsx` are the first of each in the project.** No route-level boundary existed anywhere before this. The skeleton addresses the row-click half of the standing "no pending feedback" finding; **the list page's filter, sort and pagination navigation still has none.**
+
+**`size="xl"` (h-12) was added to `button.tsx`** for the full-width Apply Now, per `ui-registry.md § Button`'s rule that a new geometry is a new size variant rather than a call-site override.
+
+#### Verified in the browser, signed in
+
+`npx tsc --noEmit`, `npm run lint` and `npm run build` all clean, with `/find-jobs/[id]` in the build output as a dynamic route.
+
+A scored job (ManpowerGroup, 85%) renders every field matching the row it was reached from, with a green pill, real salary, `Full-time`, and "45 minutes ago". An unscored job (Kizen) renders "Not scored" plus both empty states with the page's shape unchanged. A job with matched skills and no gap skills shows only the "You have" group. `/find-jobs/abc` **and** a well-formed but nonexistent uuid both land on not-found rather than the failure card — the uuid guard confirmed. View Job Post and Apply Now resolve to the same URL, both `target="_blank" rel="noopener noreferrer"`. Back to Jobs returns to `/find-jobs`. The tab title reads the job title, the first page in the app to override the root `<title>`. The loading skeleton was observed painting on a row click. No horizontal overflow at the default width; console clean, the only messages coming from a browser extension.
+
+#### Not verified
+
+**Responsive behaviour at 1024 and 430.** The Chrome window would not resize — it is OS-maximized, and `innerWidth` stayed at 1912 through every attempt — so the `sm:`/`lg:` reflow of the four stat tiles has not been seen. This is the one item from the plan's list left open.
+
+**The Log out click still has not happened.** The button is now mounted and reachable, which is the part that was blocking it, but clicking it ends the session and re-authenticating needs a real Google sign-in. Left for the user to trigger. It closes Feature 02 and verifies `user_logged_out` when it happens.
 
 ---
 

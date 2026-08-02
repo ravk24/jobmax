@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, Search, User } from "lucide-react";
+import { CircleUser, LayoutGrid, Search, User } from "lucide-react";
 
+import { LogoutButton } from "@/components/auth/LogoutButton";
 import { Logo } from "@/components/layout/Logo";
 import { cn } from "@/lib/utils";
 
@@ -46,6 +47,12 @@ export function AppNavbar() {
               </Link>
             );
           })}
+
+          {/* Decorative, matching the design mock — there is no account menu in
+              this project, and the three links above are the whole navigation. */}
+          <CircleUser className="size-6 shrink-0 text-text-secondary" aria-hidden />
+
+          <LogoutButton />
         </nav>
       </div>
     </header>

@@ -3,8 +3,10 @@ import { z } from "zod";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import {
   JOBS_PER_PAGE,
+  type JobDetail,
   type JobListItem,
   type JobQuery,
+  type JobReadResult,
   type JobsResult,
 } from "@/lib/jobs";
 import { MATCH_THRESHOLD } from "@/lib/utils";
@@ -215,6 +217,91 @@ async function countJobs(
   }
 
   return count ?? 0;
+}
+
+// The details page reads more columns than the table, but still not `*`:
+// responsibilities, requirements, nice_to_have, benefits and about_company are
+// never written by Feature 10 and the page does not render them, and
+// company_research belongs to Feature 13 along with the card that shows it.
+const JOB_DETAIL_COLUMNS =
+  "id,company,title,location,salary,job_type,about_role,match_score,match_reason,matched_skills,missing_skills,external_apply_url,found_at";
+
+// Lenient and self-repairing, the posture lib/profile-schema.ts documents for
+// reads: a row that exists should render, with a dash in the odd cell, rather
+// than fail the whole page over one unexpected value.
+const jobDetailSchema = z.object({
+  company: z.string().catch(""),
+  title: z.string().catch(""),
+  location: z.string().nullable().catch(null),
+  salary: z.string().nullable().catch(null),
+  job_type: z
+    .enum(["fulltime", "parttime", "contract"])
+    .nullable()
+    .catch(null),
+  about_role: z.string().nullable().catch(null),
+  match_score: z.number().int().nullable().catch(null),
+  match_reason: z.string().nullable().catch(null),
+  matched_skills: z.array(z.string()).nullable().catch(null),
+  missing_skills: z.array(z.string()).nullable().catch(null),
+  external_apply_url: z.string().nullable().catch(null),
+  found_at: z.string().catch(""),
+});
+
+// A uuid the database will accept. Checked before the query, not after, because
+// PostgREST answers a malformed uuid with `invalid input syntax for type uuid`
+// — an error, not zero rows — so /find-jobs/abc would otherwise render the
+// read-failure card and tell the user the system broke when the only problem is
+// a bad link. Same class of bug as the 416 an out-of-range page offset returns.
+const jobIdSchema = z.uuid();
+
+export async function selectJob(
+  userId: string,
+  jobId: string,
+): Promise<JobReadResult> {
+  if (!jobIdSchema.safeParse(jobId).success) {
+    return { status: "empty" };
+  }
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { data, error } = await insforge.database
+      .from("jobs")
+      .select(JOB_DETAIL_COLUMNS)
+      // RLS scopes this too, but the explicit filter stays for the same reason
+      // it does in fetchPage: RLS is the backstop, not a licence to drop it.
+      .eq("id", jobId)
+      .eq("user_id", userId)
+      // maybeSingle, not single — a job that does not exist is an ordinary
+      // outcome the caller handles, not an error to throw over.
+      .maybeSingle();
+
+    if (error) {
+      console.error("[lib/jobs-query]", error.message);
+      return { status: "error" };
+    }
+
+    if (!data) {
+      return { status: "empty" };
+    }
+
+    const parsed = jobDetailSchema.safeParse(data);
+
+    if (!parsed.success) {
+      console.error("[lib/jobs-query]", parsed.error.issues);
+      return { status: "error" };
+    }
+
+    // id comes from the validated parameter rather than from the row, the same
+    // way readProfile takes id and email from the session: it is the one field
+    // a repaired fallback could quietly corrupt.
+    const job: JobDetail = { id: jobId, ...parsed.data };
+
+    return { status: "found", job };
+  } catch (error) {
+    console.error("[lib/jobs-query]", error);
+    return { status: "error" };
+  }
 }
 
 export async function selectJobs(
