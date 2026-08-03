@@ -238,10 +238,18 @@ function httpUrlOrNull(value: string | null): string | null {
 
   try {
     const { protocol } = new URL(value);
-    return protocol === "https:" || protocol === "http:" ? value : null;
+    if (protocol === "https:" || protocol === "http:") {
+      return value;
+    }
   } catch {
-    return null;
+    // Not parseable as a URL at all — same answer as a wrong scheme.
   }
+
+  // Logged because this is the one repair in jobDetailSchema that nullifies
+  // valid-looking data: a scheme-less URL from a manual import would otherwise
+  // lose its apply link with no discoverable trace.
+  console.error("[lib/jobs-query] external_apply_url stripped, not http(s):", value);
+  return null;
 }
 
 // Lenient and self-repairing, the posture lib/profile-schema.ts documents for
