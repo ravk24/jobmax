@@ -19,6 +19,9 @@ type Tile = {
   value: string;
   icon: LucideIcon;
   iconClass: string;
+  // Set only where the value runs long enough to truncate — a title on a value
+  // that always fits is a pointless tooltip on hover.
+  withTitle?: boolean;
 };
 
 type Props = {
@@ -40,6 +43,8 @@ export function JobInfo({ job }: Props) {
       value: job.location ?? "—",
       icon: MapPin,
       iconClass: "bg-info-lightest text-info-dark",
+      // "Newark, Essex County, West Midlands…" — the one value that truncates.
+      withTitle: true,
     },
     {
       label: "Job Type",
@@ -72,10 +77,8 @@ export function JobInfo({ job }: Props) {
             </span>
 
             <span className="min-w-0">
-              {/* Location in particular runs long — "Newark, Essex County…" —
-                  so the value truncates and carries its full text as a title. */}
               <span
-                title={tile.value}
+                title={tile.withTitle ? tile.value : undefined}
                 className="block truncate text-sm leading-5 font-semibold text-text-primary"
               >
                 {tile.value}

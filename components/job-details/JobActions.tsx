@@ -1,5 +1,4 @@
 import { Button } from "@/components/ui/button";
-
 import type { JobDetail } from "@/lib/jobs";
 
 type Props = {

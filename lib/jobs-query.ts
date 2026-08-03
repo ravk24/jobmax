@@ -226,6 +226,24 @@ async function countJobs(
 const JOB_DETAIL_COLUMNS =
   "id,company,title,location,salary,job_type,about_role,match_score,match_reason,matched_skills,missing_skills,external_apply_url,found_at";
 
+// external_apply_url is the one column whose value becomes a navigable href,
+// and nothing constrains it — the column is bare text and jobs.source allows
+// 'url' for manual import. React 19 already neutralises javascript: hrefs, but
+// no other scheme, so anything that is not a web URL degrades to null here and
+// the page renders its existing no-link disabled button instead of a link.
+function httpUrlOrNull(value: string | null): string | null {
+  if (value === null) {
+    return null;
+  }
+
+  try {
+    const { protocol } = new URL(value);
+    return protocol === "https:" || protocol === "http:" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 // Lenient and self-repairing, the posture lib/profile-schema.ts documents for
 // reads: a row that exists should render, with a dash in the odd cell, rather
 // than fail the whole page over one unexpected value.
@@ -243,7 +261,7 @@ const jobDetailSchema = z.object({
   match_reason: z.string().nullable().catch(null),
   matched_skills: z.array(z.string()).nullable().catch(null),
   missing_skills: z.array(z.string()).nullable().catch(null),
-  external_apply_url: z.string().nullable().catch(null),
+  external_apply_url: z.string().nullable().catch(null).transform(httpUrlOrNull),
   found_at: z.string().catch(""),
 });
 

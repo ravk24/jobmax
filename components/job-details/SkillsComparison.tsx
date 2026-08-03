@@ -15,8 +15,10 @@ type Props = {
 };
 
 export function SkillsComparison({ matched, missing }: Props) {
-  const have = matched ?? [];
-  const gaps = missing ?? [];
+  // Deduped because agent/matcher.ts does not — Gemini can list a skill twice,
+  // and the skill is the React key, which must be unique.
+  const have = Array.from(new Set(matched ?? []));
+  const gaps = Array.from(new Set(missing ?? []));
 
   return (
     <section className={CARD}>

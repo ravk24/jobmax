@@ -18,9 +18,11 @@ export function JobLoadError() {
         <AlertCircle className="size-5 text-error" />
       </span>
 
-      <h2 className="mt-4 text-base leading-6 font-semibold text-text-primary">
+      {/* h1, not h2: when this renders, JobHeader does not, so this is the only
+          heading the page has — same level as not-found.tsx's. */}
+      <h1 className="mt-4 text-base leading-6 font-semibold text-text-primary">
         We could not load this job
-      </h2>
+      </h1>
       <p className="mt-1 max-w-md text-sm leading-5 text-text-secondary">
         The job is still saved — we just could not reach it right now. Nothing
         has been changed.

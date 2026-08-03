@@ -512,6 +512,27 @@ A scored job (ManpowerGroup, 85%) renders every field matching the row it was re
 
 **The Log out click still has not happened.** The button is now mounted and reachable, which is the part that was blocking it, but clicking it ends the session and re-authenticating needs a real Google sign-in. Left for the user to trigger. It closes Feature 02 and verifies `user_logged_out` when it happens.
 
+#### Review findings triaged (2026-08-03)
+
+The eight findings that shipped unresolved in `5e30c44` were triaged: five fixed, one accepted, two deferred. `tsc`, `lint` and `build` clean after the fixes.
+
+**Fixed:**
+
+1. **`external_apply_url` is now scheme-guarded at the domain boundary.** The open question — does this React block a `javascript:` href — was answered by reading the installed renderers: React 19.2.4's `sanitizeURL` replaces a `javascript:` href with a throwing URL, in both `react-dom-client` and the server renderer Next bundles (`app-page.runtime.prod.js`). That closes the XSS vector but no other scheme, and the column is bare text with `jobs.source` allowing `'url'` manual import — so `jobDetailSchema` now passes the value through `httpUrlOrNull()`: anything that is not http(s) degrades to `null`, and the page renders its existing disabled no-link button. Same self-repairing posture the schema already documents. A `JobDetail.external_apply_url` is now guaranteed renderable — future consumers inherit the guarantee.
+2. **The read-failure state now has an `h1`.** `JobLoadError`'s heading was `h2`; when it renders, `JobHeader` does not, so the page had no `h1` at all. Promoted, with a comment saying why.
+3. **Skills dedupe at render.** `agent/matcher.ts` neither dedupes nor uniques, and the skill string is the React key. `SkillsComparison` now renders `Array.from(new Set(...))` for both groups.
+4. **Stat-tile `title` is opt-in.** Only Location — the one value that truncates — carries it, via a `withTitle` flag on the tile config. The other three no longer produce tooltips.
+5. **`JobActions` import grouping** matches every other file — one `@/` block.
+
+**Accepted:**
+
+6. **`not-found.tsx` uses `SearchX`, not the plan's `Building2`.** Intentional deviation, kept: the icon describes the situation (a search that found nothing), not the subject (a company). No code change.
+
+**Deferred:**
+
+7. **Navbar below ~405px overflows** (430px — the project's tested floor — still fits). Fixing it means deciding what collapses on a 375px phone, and responsive verification is currently blocked (the OS-maximized Chrome window will not resize). Take it up with the next responsive pass.
+8. **The card class string appears in 20 source files** (measured by the shadow literal — memory's "17" undercounted). `globals.css` already holds `@utility` precedents (`field-label`, `logo-gradient`, `aurora`) that could hold a `card` utility once. Deferred to its own pass and commit: paddings and radii legitimately vary per surface (`p-6`, `p-4` tiles, `p-3` control strip, `px-6 py-12` centred states, `rounded-t-xl` homepage frame, padding-less table cards), so the extraction needs `ui-registry.md`'s per-surface recipes updated with it — not a triage-pass edit.
+
 ---
 
 ### Cross-cutting — AI provider changed to Google Gemini (2026-07-31)

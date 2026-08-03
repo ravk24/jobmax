@@ -816,7 +816,7 @@ Seven stacked cards in a 940px column. Source: `context/design/job-details.png`.
 | Match pill (unscored) | same badge + `bg-surface-secondary text-text-secondary`, reading "Not scored" |
 | Stat tile | `flex items-center gap-3 rounded-2xl border border-border bg-surface p-4` + card shadow |
 | Tile medallion | `size-8 rounded-lg` + one of `bg-success-lightest text-success` / `bg-info-lightest text-info-dark` / `bg-accent-muted text-accent` / `bg-surface-secondary text-text-muted`, icon `size-4` |
-| Tile value | `block truncate text-sm leading-5 font-semibold text-text-primary` + `title` attribute |
+| Tile value | `block truncate text-sm leading-5 font-semibold text-text-primary`; `title` attribute on Location only |
 | Tile label | `block text-xs leading-4 tracking-wider text-text-muted uppercase` |
 | Section micro-label | `text-xs leading-4 font-semibold tracking-wider text-text-secondary uppercase` |
 | Section heading | `text-base leading-6 font-semibold text-text-primary` + a `size-8 rounded-lg` medallion |
@@ -834,7 +834,7 @@ Seven stacked cards in a 940px column. Source: `context/design/job-details.png`.
 **Every section that can be empty has an empty state, and none of them hide.** An unscored job — 10 rows in the database are exactly that — keeps its pill ("Not scored"), its Match Reasoning card and its Skills card, each with one muted line. Hiding cards would make the page change shape between jobs with no explanation. Inside Skills, the two groups hide *individually*: a perfect match has no gap skills, and a "Gap skills" heading over nothing reads as a bug.
 **Null tiles render a dash rather than collapsing**, the same rule the jobs table follows, so the four tiles keep their positions whichever job is open. Location truncates and carries its full text in `title` — the design mock itself shows it clipped.
 **`size="xl"` (h-12) was added to `button.tsx` rather than hand-rolled at the call site**, per the Button entry's rule that a new geometry is a new size variant.
-**Not-found and read-failure are different pages.** `not-found.tsx` uses the empty-state medallion (`SearchX` in `text-accent`) and says the job is not in your list; `JobLoadError` uses the failure medallion (`AlertCircle` in `text-error`) and says nothing was lost. Collapsing them would tell someone with a stale link that the system broke. See the JobsTable entry for the same three-state rule.
+**Not-found and read-failure are different pages.** `not-found.tsx` uses the empty-state medallion (`SearchX` in `text-accent`) and says the job is not in your list; `JobLoadError` uses the failure medallion (`AlertCircle` in `text-error`) and says nothing was lost. Collapsing them would tell someone with a stale link that the system broke. See the JobsTable entry for the same three-state rule. Both headings are `h1` — when either renders, `JobHeader`'s h1 does not, so each is the only heading its page has.
 **`loading.tsx` is the first in the project.** Opening a job is a click that waits on a database read, and without it the row click reads as dead. The skeleton mirrors the real layout's rhythm so nothing jumps when content arrives, is `aria-hidden`, and carries one `role="status"` line for screen readers. **The list page's filter/sort/pagination navigation still has no equivalent** — that finding is still open.
 
 ---
