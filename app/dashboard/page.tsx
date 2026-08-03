@@ -6,7 +6,7 @@ import { JobsFoundChart } from "@/components/dashboard/JobsFoundChart";
 import { MatchScoreChart } from "@/components/dashboard/MatchScoreChart";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { ResearchActivityChart } from "@/components/dashboard/ResearchActivityChart";
-import { StatsBar } from "@/components/dashboard/StatsBar";
+import { StatsBar, type DashboardStat } from "@/components/dashboard/StatsBar";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { LOGIN_ROUTE } from "@/lib/auth";
 import {
@@ -14,8 +14,11 @@ import {
   MOCK_JOBS_FOUND,
   MOCK_MATCH_DISTRIBUTION,
   MOCK_RESEARCH_ACTIVITY,
-  MOCK_STATS,
 } from "@/lib/dashboard-mock";
+import {
+  selectDashboardStats,
+  type DashboardStatsResult,
+} from "@/lib/dashboard-query";
 import { getCurrentUser, readProfile } from "@/lib/insforge-server";
 import { blankProfile, calculateCompletion } from "@/lib/profile";
 
@@ -23,16 +26,87 @@ export const metadata: Metadata = {
   title: "Dashboard — JobMax",
 };
 
+// The success-green badge is the only badge StatsBar has, so it appears only
+// for genuine positive movement: prior period 0 would divide to nonsense for a
+// new user, a negative week has no red variant to wear, and a sub-1% change
+// rounds to "+0%".
+function trendBadge(current: number, prior: number): string | null {
+  if (prior <= 0 || current <= prior) {
+    return null;
+  }
+
+  const pct = Math.round(((current - prior) / prior) * 100);
+  return pct > 0 ? `+${pct}%` : null;
+}
+
+// Presentation lives here, not in lib/dashboard-query.ts — the same split as
+// the banner, where the lib returns data and the page decides what it says.
+function buildStats(result: DashboardStatsResult): DashboardStat[] {
+  // A failed read renders dashes, not a missing section: the layout holds, and
+  // "—" says "couldn't load" where a hidden bar would say "you have nothing".
+  if (result.status === "error") {
+    return [
+      { label: "Total Jobs Found", value: "—", caption: "All time" },
+      { label: "Avg. Match Rate", value: "—", caption: "Across scored jobs" },
+      { label: "Companies Researched", value: "—", caption: "Total researched" },
+      { label: "Jobs This Week", value: "—", caption: "New this week" },
+    ];
+  }
+
+  const {
+    totalJobs,
+    avgMatchScore,
+    companiesResearched,
+    jobsThisWeek,
+    jobsPriorWeek,
+  } = result.stats;
+
+  // Total's week-over-week compares against where the total stood a week ago,
+  // which is derivable as total minus the last seven days' arrivals.
+  const totalTrend = trendBadge(totalJobs, totalJobs - jobsThisWeek);
+  const weekTrend = trendBadge(jobsThisWeek, jobsPriorWeek);
+
+  return [
+    {
+      label: "Total Jobs Found",
+      value: String(totalJobs),
+      trend: totalTrend ?? undefined,
+      caption: totalTrend ? "vs last week" : "All time",
+    },
+    {
+      label: "Avg. Match Rate",
+      // null means no scored jobs yet — a dash, while the counts show real
+      // zeros. Unscored jobs are excluded from the average, not counted as 0.
+      value: avgMatchScore === null ? "—" : `${Math.round(avgMatchScore)}%`,
+      caption: "Across scored jobs",
+    },
+    {
+      label: "Companies Researched",
+      value: String(companiesResearched),
+      caption: "Total researched",
+    },
+    {
+      label: "Jobs This Week",
+      value: String(jobsThisWeek),
+      trend: weekTrend ?? undefined,
+      caption: weekTrend ? "vs last week" : "New this week",
+    },
+  ];
+}
+
 export default async function DashboardPage() {
   const user = await getCurrentUser();
   if (!user) {
     redirect(LOGIN_ROUTE);
   }
 
-  // The banner is the page's one real read. A failed profile read renders the
-  // dashboard without it — /profile owns that failure state, and a dashboard
-  // must not block on a row it only decorates from.
-  const result = await readProfile(user);
+  // Independent reads, so they run together. Each degrades on its own: a failed
+  // profile read renders the dashboard without the banner — /profile owns that
+  // failure state — and a failed stats read renders dashes via buildStats.
+  const [result, statsResult] = await Promise.all([
+    readProfile(user),
+    selectDashboardStats(user.id),
+  ]);
   const missingFields =
     result.status === "error"
       ? []
@@ -52,7 +126,7 @@ export default async function DashboardPage() {
 
           <IncompleteProfileBanner missingFields={missingFields} />
 
-          <StatsBar stats={MOCK_STATS} />
+          <StatsBar stats={buildStats(statsResult)} />
 
           <div className="grid gap-6 lg:grid-cols-[2fr_3fr]">
             <RecentActivity entries={MOCK_ACTIVITY} />

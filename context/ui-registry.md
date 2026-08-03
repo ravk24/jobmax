@@ -853,13 +853,13 @@ Seven stacked cards in a 940px column. Source: `context/design/job-details.png`.
 Files: `app/dashboard/page.tsx`, `components/dashboard/*`
 Last updated: 2026-08-03
 
-Source: `context/design/dashboard.png`. Stats and charts render mock data from `lib/dashboard-mock.ts` until Features 15/16/17; the incomplete-profile banner is real.
+Source: `context/design/dashboard.png`. The stat cards read real data via `lib/dashboard-query.ts` (Feature 15); activity and charts render mock data from `lib/dashboard-mock.ts` until Features 16/17; the incomplete-profile banner is real.
 
 | Property | Class |
 | --- | --- |
 | Column | `mx-auto flex max-w-[1440px] flex-col gap-6` inside `flex-1 bg-background px-6 py-8` — the wide app column; job details keeps its 940px one |
 | Stat card | card recipe `p-6`; label `text-sm leading-5 font-medium text-text-secondary`; value `text-3xl leading-9 font-semibold text-text-primary`; caption `text-xs leading-4 text-text-muted` |
-| Trend badge | `rounded-sm bg-success-lightest px-2 py-0.5 text-xs leading-4 font-medium text-success-darker` — the ui-tokens trend badge, `rounded-sm` not pill |
+| Trend badge | `rounded-sm bg-success-lightest px-2 py-0.5 text-xs leading-4 font-medium text-success-darker` — the ui-tokens trend badge, `rounded-sm` not pill; success-green is the *only* variant, which is why the badge hides rather than turns red on negative movement |
 | Stats grid | `grid gap-6 sm:grid-cols-2 xl:grid-cols-4` |
 | Chart rows | `grid gap-6 lg:grid-cols-[2fr_3fr]` (activity + research) and `lg:grid-cols-[3fr_2fr]` (line + distribution) |
 | Activity dot | outer `size-4 rounded-full` tint wrapping inner `size-2 rounded-full` — search `bg-success-light`/`bg-success-alt`, research `bg-info-light`/`bg-info` |
@@ -878,6 +878,7 @@ Source: `context/design/dashboard.png`. Stats and charts render mock data from `
 **Single-series charts carry no legend** — the card heading names the series (the dataviz rule; the design agrees). Hover tooltips are styled with the same tokens (`surface`/`border`/12px) so the chart's one interactive layer stays inside the system.
 **The banner guards itself** (`missingFields.length === 0` → `null`), so the page composes it unconditionally and the mock's bannerless layout is the complete-profile rendering, not a separate branch.
 **Chart Y-axes are never given a fixed `domain`** (post-review). A hardcoded `[0,100]` clips any larger value silently; recharts' nice-tick auto-scale reproduces the design's 0/25/50/75/100 for data topping out under 100 and rescales beyond it. The page also carries an `sr-only` h1 (the find-jobs precedent) and `app/dashboard/loading.tsx`, a skeleton mirroring this grid.
+**Stat cards degrade to text, never to absence (Feature 15).** The trend badge renders only for genuine positive week-over-week movement — prior period 0, change ≤ 0, or a +0% rounding all hide it and the caption switches from "vs last week" to the card's scope caption ("All time" / "New this week"). A failed stats read renders all four values as "—" with captions intact — the layout never changes shape, and a dash says "couldn't load" where a hidden bar would say "you have nothing". An unscored-only account dashes Avg. Match Rate alone (null average is data, not error). The mapping lives in `buildStats()` in `app/dashboard/page.tsx`; `lib/dashboard-query.ts` returns raw numbers and no display strings.
 
 ---
 

@@ -7,9 +7,9 @@ Update this file after every completed feature. Any AI agent reading this should
 ## Current Status
 
 **Phase:** Phase 5 — Dashboard
-**Last completed:** 14 Dashboard Page — Full UI (2026-08-03, `5fde311`), verified in the browser signed in: all four stat cards, five activity entries and three recharts charts render against `lib/dashboard-mock.ts` matching `context/design/dashboard.png`; `POST_LOGIN_ROUTE` and the homepage CTA reverted to `/dashboard` and both landings verified. **Its seven review findings were triaged the same day** (`c8b03e2` — three fixed: sr-only h1, chart domain clipping, loading skeleton; rest noted). See § Feature 14.
+**Last completed:** 15 Stats Bar — Real Data (2026-08-03): the four stat cards read live InsForge counts through the new `lib/dashboard-query.ts`; trend badges are computed week-over-week, shown only for genuine positive movement. Verified in the browser signed in against SQL ground truth, including the badge branch via temporarily backdated test rows. See § Feature 15.
 **In progress:** 06 Profile Save Logic, 07 AI Profile Extraction and 08 Resume PDF Generation — **all three code complete, all three awaiting the same signed-in click-through.** Static checks pass throughout. 02 Auth is still open on GitHub sign-in and the Log out click.
-**Next:** 15 Stats Bar — Real Data. **Carry-forward requirement from § Feature 13 review:** any stat or activity read that counts `agent_runs` as searches must filter `job_title_searched IS NOT NULL`, or research runs inflate it. The Feature 06/07/08 walkthrough is still owed and is independent; see § Feature 07 and § Feature 08 for the matrices.
+**Next:** 16 Recent Activity — Real Data. **Carry-forward requirement from § Feature 13 review:** any stat or activity read that counts `agent_runs` as searches must filter `job_title_searched IS NOT NULL`, or research runs inflate it — Feature 15 never touched `agent_runs` (all four cards are jobs-table counts), so the requirement lands squarely on 16. The Feature 06/07/08 walkthrough is still owed and is independent; see § Feature 07 and § Feature 08 for the matrices.
 
 ---
 
@@ -43,7 +43,7 @@ Update this file after every completed feature. Any AI agent reading this should
 ### Phase 5 — Dashboard
 
 - [x] 14 Dashboard Page — Full UI (mock stats/activity/charts; the incomplete-profile banner is real)
-- [ ] 15 Stats Bar — Real Data
+- [x] 15 Stats Bar — Real Data (activity/charts still mock; `MOCK_STATS` deleted)
 - [ ] 16 Recent Activity — Real Data
 - [ ] 17 Analytics Charts — PostHog Data
 
@@ -631,6 +631,28 @@ The **incomplete-banner branch was not seen rendered** — the signed-in profile
 - The `AXIS_TICK` const and tooltip `contentStyle` literal are copied across the three chart files. Same family as the card-class-literal standing item. **The rule: a fourth chart triggers extraction of a shared chart-chrome module; three copies do not.**
 - Recharts prop styling as the second sanctioned non-Tailwind surface, and the mock numbers rendering to a real user, were both already documented above — deliberate.
 - The banner's incomplete branch stays owed, as recorded under Not verified.
+
+---
+
+### Feature 15 — Stats Bar — Real Data (2026-08-03)
+
+**The four stat cards read live jobs-table counts; `MOCK_STATS` is deleted.** Total Jobs Found = all rows for the user; Avg. Match Rate = mean of `match_score` over **scored rows only** (nulls excluded, never counted as zero — the Feature 09 posture); Companies Researched = rows where `company_research IS NOT NULL` (**a row count, not distinct companies** — build-plan § 15's wording is the spec, the label is marketing); Jobs This Week = `found_at` in the last 7 **rolling** days, not since Monday.
+
+**`lib/dashboard-query.ts` is the dashboard's read layer, and it returns raw numbers, not display strings.** `selectDashboardStats(userId)` → `{ status: "ok", stats } | { status: "error" }` with `{ totalJobs, avgMatchScore: number | null, companiesResearched, jobsThisWeek, jobsPriorWeek }`. Labels, "%" formatting, captions and the badge math live in `app/dashboard/page.tsx` (`buildStats()` / `trendBadge()`) — keeping presentation out of lib is what avoided a second lib→components type import and the `types/index.ts` migration § Feature 14 warned about. Feature 16's `agent_runs` reads belong in this file, not in `lib/jobs-query.ts`, whose charter stays the find-jobs list.
+
+**Trend badges are computed, never stored — and only shown for genuine positive movement.** No history table exists, so: card 1's badge is jobs-added-this-week over the total as it stood a week ago (`totalJobs − jobsThisWeek`, zero extra queries); card 4's is this 7-day window vs the prior one (one extra count over the half-open `[14d ago, 7d ago)` window). The badge hides when the prior period is 0 (a new user's "+∞%"), when change ≤ 0 (`StatsBar` has only the success-green badge; a red variant was declared out of scope), or when it rounds to +0%. Cards 2 and 3 are caption-only by decision. Captions when no badge: "All time" / "Across scored jobs" / "Total researched" / "New this week"; with a badge, "vs last week".
+
+**A failed read renders dashes, not a missing section.** Any single query failure fails the whole read (the `selectJobs` owned/total precedent — three real numbers beside one dash reads as corruption), and the page renders all four cards with "—" and no badges. No scored jobs is *not* an error: Avg. Match Rate alone shows "—" while the counts show real zeros. The stats read runs in `Promise.all` with the banner's profile read; each degrades independently.
+
+**The average is computed in JS over one fetched integer column, not a PostgREST aggregate.** Aggregate functions are opt-in PostgREST server configuration this backend is not known to enable; at this project's scale the `match_score` column fetch is cheap. The comment in `lib/dashboard-query.ts` says to revisit if the jobs table outgrows one response. Count queries use the established `{ head: true, count: "exact" }` pattern; separate small count functions rather than a builder-taking helper, for the type-instantiation reason `lib/jobs-query.ts` documents.
+
+#### Verified in the browser, signed in (2026-08-03)
+
+`npx tsc --noEmit`, `eslint`, `npm run build` all clean. Ground truth first via SQL: 49 jobs, mean score 42 over 39 scored, 1 researched, all 49 within 7 days, prior week 0. The page rendered exactly that — **49 / All time, 42% / Across scored jobs, 1 / Total researched, 49 / New this week, both badges correctly hidden** (prior periods are 0). The badge branch was then exercised for real: 20 test rows (dossier row excluded) backdated 8 days via SQL, reload showed **"+145% vs last week"** on card 1 (29 new ÷ 20 prior total) and **"+45%"** on card 4 (29 vs 20) — both matching hand-computed expectations — then the rows were restored (+8 days, confirmed 49/49) and the original render re-verified. Console clean throughout.
+
+#### Not verified
+
+The **error branch** (four dashes) was not staged — it requires a database failure mid-render. The **incomplete-profile banner branch stays owed** from § Feature 14: this feature never made the profile row incomplete, so the chance did not arise. The `+0%`-rounding hide is arithmetic, unexercised by the live data.
 
 ---
 

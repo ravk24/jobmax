@@ -1,38 +1,13 @@
 // Mock dashboard data for Feature 14 — the UI ships against these shapes and
-// Features 15/16/17 replace this file with real reads, the same way
+// Features 16/17 replace what remains with real reads, the same way
 // lib/jobs-mock.ts stood in for Features 09→10. Values match
-// context/design/dashboard.png.
+// context/design/dashboard.png. MOCK_STATS left in Feature 15, replaced by
+// lib/dashboard-query.ts.
 
 import type { ActivityEntry } from "@/components/dashboard/RecentActivity";
-import type { DashboardStat } from "@/components/dashboard/StatsBar";
 import type { JobsFoundPoint } from "@/components/dashboard/JobsFoundChart";
 import type { MatchScoreBucket } from "@/components/dashboard/MatchScoreChart";
 import type { ResearchActivityPoint } from "@/components/dashboard/ResearchActivityChart";
-
-export const MOCK_STATS: DashboardStat[] = [
-  {
-    label: "Total Jobs Found",
-    value: "284",
-    trend: "+12%",
-    caption: "vs last week",
-  },
-  {
-    label: "Avg. Match Rate",
-    value: "82%",
-    trend: "+3%",
-    caption: "vs last week",
-  },
-  {
-    label: "Companies Researched",
-    value: "35",
-    caption: "Total researched",
-  },
-  {
-    label: "Jobs This Week",
-    value: "28",
-    caption: "New this week",
-  },
-];
 
 export const MOCK_ACTIVITY: ActivityEntry[] = [
   {
