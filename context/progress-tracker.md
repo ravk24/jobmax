@@ -7,7 +7,7 @@ Update this file after every completed feature. Any AI agent reading this should
 ## Current Status
 
 **Phase:** Phase 5 — Dashboard
-**Last completed:** 14 Dashboard Page — Full UI (2026-08-03), verified in the browser signed in: all four stat cards, five activity entries and three recharts charts render against `lib/dashboard-mock.ts` matching `context/design/dashboard.png`; `POST_LOGIN_ROUTE` and the homepage CTA reverted to `/dashboard` and both landings verified. See § Feature 14.
+**Last completed:** 14 Dashboard Page — Full UI (2026-08-03, `5fde311`), verified in the browser signed in: all four stat cards, five activity entries and three recharts charts render against `lib/dashboard-mock.ts` matching `context/design/dashboard.png`; `POST_LOGIN_ROUTE` and the homepage CTA reverted to `/dashboard` and both landings verified. **Its seven review findings were triaged the same day** (`c8b03e2` — three fixed: sr-only h1, chart domain clipping, loading skeleton; rest noted). See § Feature 14.
 **In progress:** 06 Profile Save Logic, 07 AI Profile Extraction and 08 Resume PDF Generation — **all three code complete, all three awaiting the same signed-in click-through.** Static checks pass throughout. 02 Auth is still open on GitHub sign-in and the Log out click.
 **Next:** 15 Stats Bar — Real Data. **Carry-forward requirement from § Feature 13 review:** any stat or activity read that counts `agent_runs` as searches must filter `job_title_searched IS NOT NULL`, or research runs inflate it. The Feature 06/07/08 walkthrough is still owed and is independent; see § Feature 07 and § Feature 08 for the matrices.
 
