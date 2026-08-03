@@ -6,10 +6,10 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ## Current Status
 
-**Phase:** Phase 3 — Find Jobs Page
-**Last completed:** 10 Adzuna Job Discovery **and 11 Filter + Sort + Pagination** (2026-08-02), verified in the browser signed in against real Adzuna results and real Gemini scores. Feature 11 landed with 10 rather than after it — see § Feature 10.
-**In progress:** 06 Profile Save Logic, 07 AI Profile Extraction and 08 Resume PDF Generation — **all three code complete, all three awaiting the same signed-in click-through.** Static checks pass throughout. 02 Auth is still open on GitHub sign-in and the Log out click.
-**Next:** 12 Job Details Page — `/find-jobs/{id}` is the one link on the page that still 404s, and every row now points at it with a real job id. The Feature 06/07/08 walkthrough is still owed and is independent of Phase 3; see § Feature 07 and § Feature 08 for the matrices.
+**Phase:** Phase 4 — Job Details Page
+**Last completed:** 12 Job Details Page (2026-08-03), verified in the browser signed in against real rows — a scored job, an unscored job, both missing-job paths and the loading skeleton. Nothing in the app 404s any more. **Its eight review findings were then triaged the same day** (`ed13b15`, `6e0ecc9`, `8921264` — five fixed, one accepted, two deferred; see § Feature 12 § Review findings triaged).
+**In progress:** 06 Profile Save Logic, 07 AI Profile Extraction and 08 Resume PDF Generation — **all three code complete, all three awaiting the same signed-in click-through.** Static checks pass throughout. 02 Auth is still open on GitHub sign-in and the Log out click — but the button is now mounted and reachable for the first time, see § Feature 12.
+**Next:** 13 Company Research Agent — the card, its empty state and its button shell are already on the page; Feature 13 supplies the behaviour, the `company_research` column in the query, and the branch that renders the dossier. The Feature 06/07/08 walkthrough is still owed and is independent of Phase 4; see § Feature 07 and § Feature 08 for the matrices.
 
 ---
 
@@ -37,7 +37,7 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ### Phase 4 — Job Details Page
 
-- [ ] 12 Job Details Page — Full UI
+- [x] 12 Job Details Page — Full UI, wired to real rows; Company Research card is the empty state and button shell only
 - [ ] 13 Company Research Agent
 
 ### Phase 5 — Dashboard
@@ -54,6 +54,8 @@ Update this file after every completed feature. Any AI agent reading this should
 ### ~~`NEXT_PUBLIC_INSFORGE_ANON_KEY` is missing~~ — resolved 2026-07-29
 
 The key is now in `.env.local`. `/login` renders 200 with no SDK error in the dev log, so the SSR clients construct successfully. The OAuth round trip itself is still unverified — see the `allowedRedirectUrls` blocker below. Original diagnosis kept for reference:
+
+
 
 `createBrowserClient()` and `createServerClient()` from `@insforge/sdk/ssr` both throw `"Missing InsForge baseUrl or anonKey"` without it — the check is `if (!baseUrl || !anonKey) throw`. The base `createClient()` treats `anonKey` as optional; the SSR helpers do not. Any page calling `getCurrentUser()` returns a 500 until this is set.
 
@@ -97,9 +99,9 @@ Still add a production origin to `allowedRedirectUrls` at deploy time.
 
 ### Feature 02 — Auth (2026-07-29)
 
-**`@insforge/ssr` does not exist; `@insforge/sdk/ssr` does.** The context files named a package that isn't on npm. The _API shape_ they described — `createBrowserClient` / `createServerClient` with a cookies adapter — is real; only the import path was wrong. `architecture.md`, `library-docs.md` and `code-standards.md` have been corrected.
+**`@insforge/ssr` does not exist; `@insforge/sdk/ssr` does.** The context files named a package that isn't on npm. The *API shape* they described — `createBrowserClient` / `createServerClient` with a cookies adapter — is real; only the import path was wrong. `architecture.md`, `library-docs.md` and `code-standards.md` have been corrected.
 
-**Session lives in httpOnly cookies on our own origin, via `client_type=server`.** The SDK's default `client_type=web` stores the refresh token in a cookie on the _InsForge_ domain, which our Proxy and Server Components can never read. `client_type=server` returns the token to us instead. This is the decision the rest of the architecture depends on — Proxy route protection, `createInsforgeServer()`, and Server Components reading the user all require it.
+**Session lives in httpOnly cookies on our own origin, via `client_type=server`.** The SDK's default `client_type=web` stores the refresh token in a cookie on the *InsForge* domain, which our Proxy and Server Components can never read. `client_type=server` returns the token to us instead. This is the decision the rest of the architecture depends on — Proxy route protection, `createInsforgeServer()`, and Server Components reading the user all require it.
 
 **Nothing about the auth flow is hand-rolled.** `createAuthActions()` does the PKCE dance and the code exchange, `updateSession()` does the refresh and rotated-cookie writes, `clearAuthCookies()` does sign-out. An earlier plan to implement PKCE by hand was dropped once the SSR helpers were found — the SDK's own types deprecate the manual path.
 
@@ -115,9 +117,9 @@ Still add a production origin to `allowedRedirectUrls` at deploy time.
 
 **This proves the OAuth round trip works.** A 404 at `/dashboard` means the exchange succeeded, cookies were written, and the redirect fired. `allowedRedirectUrls` is therefore **not** a blocker.
 
-**`createAuthActions()` needs a writable cookie store even to _start_ OAuth (fixed 2026-07-29).** `app/api/auth/[provider]/route.ts` called `createAuthActions({ baseUrl })` with no cookie store — the pattern `library-docs.md` documented. The SDK guards this at **construction** (`ssr.mjs:3617`: `if (!writeCookies?.set) throw`), so it threw before `signInWithOAuth` ever ran, and the route's catch flattened it into a generic `oauth_start_failed`. The guard is over-broad: `signInWithOAuth` is a passthrough that writes no cookies (`ssr.mjs:3643`). TypeScript cannot catch this — `createAuthActions(options?)` has every cookie field optional, so it is a runtime-only contract.
+**`createAuthActions()` needs a writable cookie store even to *start* OAuth (fixed 2026-07-29).** `app/api/auth/[provider]/route.ts` called `createAuthActions({ baseUrl })` with no cookie store — the pattern `library-docs.md` documented. The SDK guards this at **construction** (`ssr.mjs:3617`: `if (!writeCookies?.set) throw`), so it threw before `signInWithOAuth` ever ran, and the route's catch flattened it into a generic `oauth_start_failed`. The guard is over-broad: `signInWithOAuth` is a passthrough that writes no cookies (`ssr.mjs:3643`). TypeScript cannot catch this — `createAuthActions(options?)` has every cookie field optional, so it is a runtime-only contract.
 
-Fix: build the redirect response _first_ (targeting `LOGIN_ROUTE` as a placeholder), pass `responseCookies: response.cookies`, then retarget with `response.headers.set("location", data.url)` once the SDK returns. The `library-docs.md` snippet has been corrected — it taught the broken call, so this would otherwise be rewritten every session.
+Fix: build the redirect response *first* (targeting `LOGIN_ROUTE` as a placeholder), pass `responseCookies: response.cookies`, then retarget with `response.headers.set("location", data.url)` once the SDK returns. The `library-docs.md` snippet has been corrected — it taught the broken call, so this would otherwise be rewritten every session.
 
 **Login page redesigned as a split screen (2026-07-29).** The first pass was a small centred card on `bg-background` — technically correct but visually thin next to the delivered landing-page design. It is now a two-column layout: form column on the left, an `aurora` showcase panel on the right carrying the Hero's headline, the `JobsTablePreview` mock, and three value points. No new design assets existed for auth, so the treatment is derived from `context/design/landing-page.png`. Two new components: `components/auth/AuthShowcase.tsx` and `components/auth/AuthHighlights.tsx`. See `ui-registry.md § Login page / split auth layout`.
 
@@ -151,7 +153,7 @@ Fix: build the redirect response _first_ (targeting `LOGIN_ROUTE` as a placehold
 
 **Two `ui-rules.md` rules were corrected against the design** — the navbar "no underline" rule (the app navbar's active item does carry an accent underline) and the white form-input background (controls sit on `surface-secondary`). Both were contradicted by `context/design/profile.png`, which that file names as the source of truth.
 
-**Verified:** no horizontal overflow at 1440/1024/430; add and remove a skill; add a role (1→2); "Currently working here" disables _and_ clears the end date. Banner reads 70% with exactly `PHONE`, `LOCATION`, `EDUCATION`. `tsc`, `lint`, `build` clean.
+**Verified:** no horizontal overflow at 1440/1024/430; add and remove a skill; add a role (1→2); "Currently working here" disables *and* clears the end date. Banner reads 70% with exactly `PHONE`, `LOCATION`, `EDUCATION`. `tsc`, `lint`, `build` clean.
 
 **Three review findings fixed after the first build (2026-07-30):**
 
@@ -159,7 +161,7 @@ Fix: build the redirect response _first_ (targeting `LOGIN_ROUTE` as a placehold
 - **`WorkExperience` gained an `id`.** Roles were keyed by array index while `WorkExperienceCard` derived twelve element ids from the same index, so removing a middle role re-pointed React state and every `label htmlFor`. Ids are generated with `crypto.randomUUID()` **in the click handler, never during render** — during render it would differ between server and client and break hydration. This changes the jsonb shape; no DDL change was needed, and no rows exist yet.
 - **The signed-in user's email is now used.** The page fetched the session, used it only for the redirect guard, then rendered a hardcoded `faizan@jsmastery.pro` in the disabled Email field — a regression, since the previous placeholder page showed the real address. Only email is taken from the session; the rest stays mock until Feature 06.
 
-**Verification required temporarily bypassing auth** — `/profile` is protected by `proxy.ts`, so a headless browser with no session only ever sees `/login`. The page guard _and_ the proxy matcher were both patched, then reverted; `git diff` confirmed both files identical to `HEAD` and `/profile` returning 307 again afterwards.
+**Verification required temporarily bypassing auth** — `/profile` is protected by `proxy.ts`, so a headless browser with no session only ever sees `/login`. The page guard *and* the proxy matcher were both patched, then reverted; `git diff` confirmed both files identical to `HEAD` and `/profile` returning 307 again afterwards.
 
 ### Feature 06 — Profile Save Logic (2026-07-30)
 
@@ -193,9 +195,9 @@ Fixed by adding `/api/resume/:path*` to the matcher and giving `proxy.ts` a `rej
 
 **"No row yet" and "the read failed" must never collapse into one answer.** Both looked identical to a caller returning `null`, and the caller's natural response — render an empty form — turns a transient database blip into silent data loss the moment the user saves over their own profile. `readProfile()` (formerly `getProfileRow`) now returns a discriminated `{ status: "found" | "empty" | "error" }`; a row that exists but fails to parse counts as `error`, not `empty`. `/profile` renders `ProfileLoadError` **instead of** the form on error — never alongside it, since an empty form is exactly the invitation that causes the loss. This was not hypothetical: the `invalid input syntax for type uuid: "undefined"` window did the first half of it, and only an already-empty row stopped it mattering.
 
-**A Server Action returning its errors is not the same as the call not throwing.** `saveProfile` never throws, but the _call_ can reject — a dropped connection, a restarted dev server, a 500 before the action body runs. `handleSubmit` originally awaited it bare, so a rejection meant `setStatus` never ran and the button sat disabled on "Saving…" with nothing to explain it. Found when a save appeared to do nothing and the server log showed no `POST` at all. Every Server Action call from a client component needs its own try/catch on top of the action's internal one.
+**A Server Action returning its errors is not the same as the call not throwing.** `saveProfile` never throws, but the *call* can reject — a dropped connection, a restarted dev server, a 500 before the action body runs. `handleSubmit` originally awaited it bare, so a rejection meant `setStatus` never ran and the button sat disabled on "Saving…" with nothing to explain it. Found when a save appeared to do nothing and the server log showed no `POST` at all. Every Server Action call from a client component needs its own try/catch on top of the action's internal one.
 
-**Reads are validated too, and the two postures are deliberately opposite.** `lib/profile-schema.ts` holds both schemas. Writes are **strict** — input arrives from a public POST endpoint and a bad enum would otherwise surface as an opaque Postgres CHECK error. Reads are **lenient and self-repairing**: `from()` is typed `PostgrestQueryBuilder<any, …>`, so a row arrives as `any` and annotating the return type would be an unchecked cast over data the database does not constrain. Every field in `profileRowSchema` carries a `.catch()` fallback, because a schema that _rejects_ is dangerous here — falling back to a blank form would silently overwrite the real row on the next save. `id` and `email` are overwritten from the session rather than trusted, as they are the two values a blank fallback would corrupt.
+**Reads are validated too, and the two postures are deliberately opposite.** `lib/profile-schema.ts` holds both schemas. Writes are **strict** — input arrives from a public POST endpoint and a bad enum would otherwise surface as an opaque Postgres CHECK error. Reads are **lenient and self-repairing**: `from()` is typed `PostgrestQueryBuilder<any, …>`, so a row arrives as `any` and annotating the return type would be an unchecked cast over data the database does not constrain. Every field in `profileRowSchema` carries a `.catch()` fallback, because a schema that *rejects* is dangerous here — falling back to a blank form would silently overwrite the real row on the next save. `id` and `email` are overwritten from the session rather than trusted, as they are the two values a blank fallback would corrupt.
 
 **Roles written before Feature 05 have no `id`,** and React keys plus every element id in `WorkExperienceCard` derive from it. The read schema backfills `legacy-role-{index}` — positional, so it is stable across renders. `crypto.randomUUID()` would differ on every render and break hydration, the same trap Feature 05 hit.
 
@@ -241,9 +243,9 @@ Five questions that had been carried across sessions are now settled. They are d
 
 **`db/schema.sql` is the source of truth.** Every statement is idempotent, so re-running it is safe. It was applied through the MCP `run-raw-sql` tool in a single batch. `types/index.ts` is authored from the same column list — change one and change the other in the same commit.
 
-**RLS is the only access control, not defence in depth.** InsForge sets a default ACL on `public` (`pg_default_acl`) granting `arwd` to **both `anon` and `authenticated`** on every table `project_admin` creates, and both roles already hold schema `USAGE`. A table added to `public` without RLS is therefore world-readable _and_ world-writable by unauthenticated callers. Never add a table without enabling RLS and adding a policy. `db/schema.sql` also explicitly `REVOKE`s `anon` on all four tables so anonymous callers are refused outright rather than allowed to connect and match zero rows.
+**RLS is the only access control, not defence in depth.** InsForge sets a default ACL on `public` (`pg_default_acl`) granting `arwd` to **both `anon` and `authenticated`** on every table `project_admin` creates, and both roles already hold schema `USAGE`. A table added to `public` without RLS is therefore world-readable *and* world-writable by unauthenticated callers. Never add a table without enabling RLS and adding a policy. `db/schema.sql` also explicitly `REVOKE`s `anon` on all four tables so anonymous callers are refused outright rather than allowed to connect and match zero rows.
 
-**`auth.users` exists and `architecture.md` was right.** `profiles.id uuid REFERENCES auth.users(id)` is valid — verified by inserting a row keyed on the real signed-in user. `auth.users.id` is `uuid NOT NULL`. The auth schema is _not_ reachable through PostgREST (`/api/database/records/*` is scoped to `public`), which is why the FK target could not be confirmed from the REST API alone.
+**`auth.users` exists and `architecture.md` was right.** `profiles.id uuid REFERENCES auth.users(id)` is valid — verified by inserting a row keyed on the real signed-in user. `auth.users.id` is `uuid NOT NULL`. The auth schema is *not* reachable through PostgREST (`/api/database/records/*` is scoped to `public`), which is why the FK target could not be confirmed from the REST API alone.
 
 **Postgres RLS is genuinely supported.** `auth.uid()` exists, defined as `SELECT nullif(auth.jwt() ->> 'sub', '')::uuid`, alongside `auth.jwt()`, `auth.role()`, `auth.email()`. Policies compare against it. `anon` and `authenticated` both have `rolbypassrls = false` so policies apply to app traffic; `project_admin` (the MCP/admin connection) has `rolbypassrls = true`, which is why admin tooling still sees every row — do not mistake that for a policy failure.
 
@@ -285,7 +287,7 @@ Five questions that had been carried across sessions are now settled. They are d
 
 **The default draft-2020-12 JSON Schema is accepted** — `$schema`, `anyOf` and `additionalProperties` included. The anticipated `{ target: "openapi-3.0" }` fallback was not needed; both dialects were probed and both work.
 
-**`z.toJSONSchema()` throws on `.transform()`**, so none of `profile-schema.ts`'s composed helpers can be reused — `nullableText` and `tagList` both end in one. `.catch()` converts but only to a `default` _hint_, and it swallows exactly the model misbehaviour worth logging. The extraction schema is fresh, transform-free, and tolerant via `.nullish()`; the caps are imported from `profile-schema.ts` so extraction cannot produce a value the save later rejects.
+**`z.toJSONSchema()` throws on `.transform()`**, so none of `profile-schema.ts`'s composed helpers can be reused — `nullableText` and `tagList` both end in one. `.catch()` converts but only to a `default` *hint*, and it swallows exactly the model misbehaviour worth logging. The extraction schema is fresh, transform-free, and tolerant via `.nullish()`; the caps are imported from `profile-schema.ts` so extraction cannot produce a value the save later rejects.
 
 **`output_text` is `string | undefined`** — guarded, because `JSON.parse(undefined)` throws.
 
@@ -319,7 +321,7 @@ The same confirm copy carries the second thing the user cannot otherwise know: *
 
 **`canGenerateResume()` is deliberately looser than `calculateCompletion()`.** It requires `full_name` plus either a role with content or a non-empty skills list. Tying generation to `is_complete` would refuse a perfectly usable partial profile; requiring nothing would spend a rate-limited call to produce an empty page and then overwrite a real resume with it. It lives in `lib/profile.ts` beside `calculateCompletion()`, and `hasRoleContent()` was exported from that file to serve it.
 
-**A 429 refuses; every other model failure degrades and admits it.** These are opposite responses on purpose. A 429 is transient, so "try again in a moment" is real advice and nothing is written. Every other failure is _deterministic_ here — the seed is fixed, so the same profile fails the same way forever — and refusing would leave that user permanently unable to generate anything. Those fall back to the candidate's own `responsibilities` text, rendered as written. **The route reports which of the two happened** (`data.polished`), and the "plain" message renders in `text-error` rather than as a success: a document whose wording is the user's own, delivered silently under a button labelled Generate, is less than what was promised — and it has already overwritten what they had.
+**A 429 refuses; every other model failure degrades and admits it.** These are opposite responses on purpose. A 429 is transient, so "try again in a moment" is real advice and nothing is written. Every other failure is *deterministic* here — the seed is fixed, so the same profile fails the same way forever — and refusing would leave that user permanently unable to generate anything. Those fall back to the candidate's own `responsibilities` text, rendered as written. **The route reports which of the two happened** (`data.polished`), and the "plain" message renders in `text-error` rather than as a success: a document whose wording is the user's own, delivered silently under a button labelled Generate, is less than what was promised — and it has already overwritten what they had.
 
 **`thinking_level: "minimal"` and `max_output_tokens: 2000`, against what library-docs.md prescribed.** The old row said default thinking at 1000. On the one measurement this project has, that pairing spends the budget on thought tokens and returns nothing parseable (Feature 07: 767 thought, 14 emitted, at 800). The instinct that writing benefits from deliberation is not wrong in general, but every fact is supplied here and the task is rewriting the user's own sentences. `library-docs.md` has been corrected rather than deviated from silently.
 
@@ -378,7 +380,7 @@ The first pass at delete-first closed the database side and left the UI and the 
 
 **The card kept advertising a file that was gone.** Neither `upload()` nor `generate()` called `router.refresh()` on its failure path, so after a replacement deleted the old object and failed, the server had correctly nulled `resume_pdf_url` while the client still held its mount-time prop — **Extract from Resume and Download stayed on screen**, pointing at nothing. `router.refresh()` now runs in `finally` on both, unconditionally.
 
-**That alone was not enough, and the reason is the more useful lesson.** `currentResume` was `uploadedName ?? (resumeUrl ? "resume.pdf" : null)` — client state ranked _above_ the server's answer, so a filename left over from an earlier successful upload kept the buttons visible no matter how many times the page refreshed. Inverted to `resumeUrl ? (uploadedName ?? "resume.pdf") : null`: the server decides whether a resume exists, and `uploadedName` only makes the label nicer than the storage key. The cost is that the buttons appear a beat later on a first upload, once the refresh lands — correct, and worth it.
+**That alone was not enough, and the reason is the more useful lesson.** `currentResume` was `uploadedName ?? (resumeUrl ? "resume.pdf" : null)` — client state ranked *above* the server's answer, so a filename left over from an earlier successful upload kept the buttons visible no matter how many times the page refreshed. Inverted to `resumeUrl ? (uploadedName ?? "resume.pdf") : null`: the server decides whether a resume exists, and `uploadedName` only makes the label nicer than the storage key. The cost is that the buttons appear a beat later on a first upload, once the refresh lands — correct, and worth it.
 
 **"Could not upload your resume." was a lie when the old one had just been deleted.** It reads as "nothing happened". `ResumeWriteResult` and `GenerationOutcome` now carry `previousResumeRemoved`, and both routes say so plainly when it is true. The user may have no other copy of that file; they need to know immediately, not the next time they go looking for it.
 
@@ -398,7 +400,7 @@ Also closed: the download route answers a 404 with `text/plain` rather than the 
 
 ### Feature 09 — Find Jobs Page UI (2026-07-31)
 
-**Filter, sort and pagination live in the URL, not in component state.** `/find-jobs?q=&match=&sort=&page=` — the page is a Server Component that reads `await searchParams`, and `selectJobs()` in `lib/jobs.ts` was meant to be the **one seam Feature 11 replaces**: its body becomes an InsForge `.or().order().range()` query and `lib/jobs-mock.ts` is deleted, with no component changes. **Corrected 2026-08-02 — both halves of that were wrong.** The function had to move to a server-only `lib/jobs-query.ts` (a Client Component imports this file), and `page.tsx`, `JobsTable.tsx` and the shape of `JobSelection` all changed. See § Feature 10. Client-side filtering would have been thrown away, and inert controls would have shipped unverified — build-plan.md's "no logic yet" is satisfied by there being no _data_ logic, not by the controls being dead.
+**Filter, sort and pagination live in the URL, not in component state.** `/find-jobs?q=&match=&sort=&page=` — the page is a Server Component that reads `await searchParams`, and `selectJobs()` in `lib/jobs.ts` was meant to be the **one seam Feature 11 replaces**: its body becomes an InsForge `.or().order().range()` query and `lib/jobs-mock.ts` is deleted, with no component changes. **Corrected 2026-08-02 — both halves of that were wrong.** The function had to move to a server-only `lib/jobs-query.ts` (a Client Component imports this file), and `page.tsx`, `JobsTable.tsx` and the shape of `JobSelection` all changed. See § Feature 10. Client-side filtering would have been thrown away, and inert controls would have shipped unverified — build-plan.md's "no logic yet" is satisfied by there being no *data* logic, not by the controls being dead.
 
 **The design's five columns win over build-plan.md's six.** Both `build-plan.md` and `project-overview.md` list a SOURCE badge column, and `context/design/find-jobs.png` does not have one. URL import is explicitly out of scope, so `jobs.source` is `'search'` on every row that will ever exist — the column would be constant-valued decoration. The **"Jobs by Adzuna" credit** `project-overview.md` requires instead sits in the table footer beside the results count, so the attribution obligation is met. Same reasoning shape as Feature 01's dashboard-cards decision: the design settles what the two spec files disagree about.
 
@@ -474,6 +476,72 @@ Also closed: the download route answers a 404 with `text/plain` rather than the 
 
 ---
 
+### Feature 12 — Job Details Page (2026-08-03)
+
+**The two questions this feature was expected to open were closed by reading the design.** § Feature 10 left "backfill Adzuna's `created` and `about_company`, or leave null?" as the next session's first decision. The mock answers both: DATE FOUND is `found_at`, and the company story is the Company Research card, which is Feature 13. **Nothing was backfilled and nothing needed to be.** Adzuna's `created` is still parsed and dropped in `lib/adzuna.ts`; `about_company` is still an unwritten column.
+
+**`project-overview.md` asks for five sections that can never have data.** Its Job Details list (`:86-106`) names Responsibilities, Requirements, Nice to Have, Benefits and About the Company. Feature 10 writes none of them — Adzuna returns a snippet, not a structured posting — so all five columns are permanently null. The page follows the design mock and `build-plan.md:258-275` instead: one Job Description card rendering `about_role`. This is the same call Feature 01 made on the dashboard cards, in the opposite direction: **the disagreement is settled by which source has a design asset behind it and whether the data exists.** Do not add the five sections back without a data source.
+
+**A malformed job id is not-found, not an error — and it took a guard to make it so.** PostgREST answers a non-uuid `id` with `invalid input syntax for type uuid`, which arrives as an *error*, not as zero rows, so `/find-jobs/abc` rendered the read-failure card and told the user the system had broken. `selectJob()` now validates with `z.uuid()` **before** touching the database. This is the third member of a family worth naming: **a user-supplied value reaching Postgres in a shape it rejects looks like an outage.** The others are Feature 10's 416 on an out-of-range page offset and Feature 06's `invalid input syntax for type uuid: "undefined"`.
+
+**`selectJob()` returns three answers, and "empty" covers two different causes on purpose.** A job that does not exist and a job belonging to another user are indistinguishable — RLS returns no row either way — and neither is a failure. `empty` → `notFound()`, `error` → `JobLoadError`. Same discipline as `ProfileReadResult`; see § Feature 06 for why collapsing them is dangerous.
+
+**`company_research` is deliberately absent from `JOB_DETAIL_COLUMNS`.** The card renders its empty state unconditionally. Selecting the column would create a populated case with nothing to render it — a hole that produces a blank card and no error. **Feature 13 adds the column, the dossier branch and the button's behaviour together**, and the button is `disabled` until then rather than pretending to work. `types/index.ts` already carries the 9-field `CompanyResearch` shape.
+
+**Two score scales now exist and neither is wrong.** `matchScoreBarClass` (bars, ui-rules.md: ≥80 green, ≥60 blue, <60 orange) and the new `matchScoreBadgeClass` (pills, ui-tokens.md: ≥90/≥70 green, ≥50 orange, else muted). They were read as a conflict at first; they describe different elements, and the bar turns blue at 60 where the pill never does. Both are commented in `lib/utils.ts` so neither gets "fixed" into the other.
+
+**An unscored job keeps every section.** Ten rows in the database have no score, from Feature 10's broken-Gemini test, so this is a clickable state rather than a hypothetical. The pill reads "Not scored"; Match Reasoning and Skills each render one muted line. Hiding them would change the page's shape between jobs with no explanation, against `ui-rules.md § Empty States`.
+
+**`components/job-details/` deviates from `architecture.md:112-117` in one place.** That list prescribes a single `MatchScore.tsx`; this ships `MatchReasoning.tsx` and `SkillsComparison.tsx`, because they are two independently-empty cards and `code-standards.md:63` is one component per file. `JobInfo`, `JobDescription`, `CompanyResearch` and `JobActions` keep the prescribed names. `JobHeader` and `JobLoadError` are additions.
+
+**`AppNavbar` gained the avatar and Sign out, which unblocked a three-session-old gap.** `LogoutButton.tsx` has existed since Feature 02 and was **imported by nothing** — which is exactly why the logout click and `user_logged_out` were never tested. The design mock shows both on this page, so mounting them was in scope, and it fixes every authenticated page at once. **A finished component that nothing imports is not shipped.**
+
+**`loading.tsx` and `not-found.tsx` are the first of each in the project.** No route-level boundary existed anywhere before this. The skeleton addresses the row-click half of the standing "no pending feedback" finding; **the list page's filter, sort and pagination navigation still has none.**
+
+**`size="xl"` (h-12) was added to `button.tsx`** for the full-width Apply Now, per `ui-registry.md § Button`'s rule that a new geometry is a new size variant rather than a call-site override.
+
+#### Verified in the browser, signed in
+
+`npx tsc --noEmit`, `npm run lint` and `npm run build` all clean, with `/find-jobs/[id]` in the build output as a dynamic route.
+
+A scored job (ManpowerGroup, 85%) renders every field matching the row it was reached from, with a green pill, real salary, `Full-time`, and "45 minutes ago". An unscored job (Kizen) renders "Not scored" plus both empty states with the page's shape unchanged. A job with matched skills and no gap skills shows only the "You have" group. `/find-jobs/abc` **and** a well-formed but nonexistent uuid both land on not-found rather than the failure card — the uuid guard confirmed. View Job Post and Apply Now resolve to the same URL, both `target="_blank" rel="noopener noreferrer"`. Back to Jobs returns to `/find-jobs`. The tab title reads the job title, the first page in the app to override the root `<title>`. The loading skeleton was observed painting on a row click. No horizontal overflow at the default width; console clean, the only messages coming from a browser extension.
+
+#### Not verified
+
+**Responsive behaviour at 1024 and 430.** The Chrome window would not resize — it is OS-maximized, and `innerWidth` stayed at 1912 through every attempt — so the `sm:`/`lg:` reflow of the four stat tiles has not been seen. This is the one item from the plan's list left open.
+
+**The Log out click still has not happened.** The button is now mounted and reachable, which is the part that was blocking it, but clicking it ends the session and re-authenticating needs a real Google sign-in. Left for the user to trigger. It closes Feature 02 and verifies `user_logged_out` when it happens.
+
+#### Review findings triaged (2026-08-03)
+
+The eight findings that shipped unresolved in `5e30c44` were triaged: five fixed, one accepted, two deferred. `tsc`, `lint` and `build` clean after the fixes. Commits `ed13b15` (the triage), `6e0ecc9` (the strip log below) and `8921264` (registry pattern note).
+
+**Fixed:**
+
+1. **`external_apply_url` is now scheme-guarded at the domain boundary.** The open question — does this React block a `javascript:` href — was answered by reading the installed renderers: React 19.2.4's `sanitizeURL` replaces a `javascript:` href with a throwing URL, in both `react-dom-client` and the server renderer Next bundles (`app-page.runtime.prod.js`). That closes the XSS vector but no other scheme, and the column is bare text with `jobs.source` allowing `'url'` manual import — so `jobDetailSchema` now passes the value through `httpUrlOrNull()`: anything that is not http(s) degrades to `null`, and the page renders its existing disabled no-link button. Same self-repairing posture the schema already documents. A `JobDetail.external_apply_url` is now guaranteed renderable — future consumers inherit the guarantee.
+2. **The read-failure state now has an `h1`.** `JobLoadError`'s heading was `h2`; when it renders, `JobHeader` does not, so the page had no `h1` at all. Promoted, with a comment saying why.
+3. **Skills dedupe at render.** `agent/matcher.ts` neither dedupes nor uniques, and the skill string is the React key. `SkillsComparison` now renders `Array.from(new Set(...))` for both groups.
+4. **Stat-tile `title` is opt-in.** Only Location — the one value that truncates — carries it, via a `withTitle` flag on the tile config. The other three no longer produce tooltips.
+5. **`JobActions` import grouping** matches every other file — one `@/` block.
+
+**Accepted:**
+
+6. **`not-found.tsx` uses `SearchX`, not the plan's `Building2`.** Intentional deviation, kept: the icon describes the situation (a search that found nothing), not the subject (a company). No code change.
+
+**Deferred:**
+
+7. **Navbar below ~405px overflows** (430px — the project's tested floor — still fits). Fixing it means deciding what collapses on a 375px phone, and responsive verification is currently blocked (the OS-maximized Chrome window will not resize). Take it up with the next responsive pass.
+8. **The card class string appears in 20 source files** (measured by the shadow literal — memory's "17" undercounted). `globals.css` already holds `@utility` precedents (`field-label`, `logo-gradient`, `aurora`) that could hold a `card` utility once. Deferred to its own pass and commit: paddings and radii legitimately vary per surface (`p-6`, `p-4` tiles, `p-3` control strip, `px-6 py-12` centred states, `rounded-t-xl` homepage frame, padding-less table cards), so the extraction needs `ui-registry.md`'s per-surface recipes updated with it — not a triage-pass edit.
+
+**The triage pass was itself reviewed, and two things came out of it:**
+
+- **A stripped apply URL now logs before degrading** (`6e0ecc9`). `httpUrlOrNull()` is the one repair in `jobDetailSchema` that nullifies *valid-looking* data — a scheme-less URL from a manual import would lose its apply link with no trace — so it leaves a `[lib/jobs-query]` `console.error` with the value. The schema's other `.catch(null)` repairs stay silent by design; this one is different because the data it discards may be a working link missing only its scheme.
+- **Case-insensitive skill duplicates still render twice** ("React"/"react") — the render-side dedupe is exact-match, which is all the key collision needed. The real fix is normalization in `agent/matcher.ts`, deliberately out of scope for a render-side triage. **Owed whenever the matcher is next touched.**
+
+The five fixes were verified statically only (`tsc`, `lint`, `build`) — **no browser re-verification happened**, against this project's click-verification habit. Low risk: attribute-level and semantic changes, and the scheme guard is a no-op for every current row (all Adzuna https URLs). If anything on the details page looks off next session, re-check these five first.
+
+---
+
 ### Cross-cutting — AI provider changed to Google Gemini (2026-07-31)
 
 **GPT-4o is out; Google Gemini is in, across Features 07, 08, 10 and 13.** No OpenAI credits. Every doc that named GPT-4o or `OPENAI_API_KEY` was rewritten. No application code changed — nothing had been built against OpenAI yet, and no AI package was ever installed, so this cost nothing but documentation.
@@ -486,7 +554,7 @@ Also closed: the download route answers a 404 with `text/plain` rather than the 
 
 **Model is `gemini-3.6-flash`, pinned once as `GEMINI_MODEL` in `lib/gemini.ts`.** The old rule was "the model string is always `gpt-4o`", which invited hardcoding at four call sites. `gemini-3.5-flash-lite` is the fallback if the free tier rate-limits us.
 
-**Structured output got stronger, not weaker.** Gemini constrains decoding to a JSON Schema passed in `response_format.schema`, where GPT-4o's `json_object` mode only promised _some_ valid JSON. The schema is generated with `z.toJSONSchema()` — built into zod v4, which we already have — so the zod schema stays the single definition of the shape and both constrains generation and validates the result.
+**Structured output got stronger, not weaker.** Gemini constrains decoding to a JSON Schema passed in `response_format.schema`, where GPT-4o's `json_object` mode only promised *some* valid JSON. The schema is generated with `z.toJSONSchema()` — built into zod v4, which we already have — so the zod schema stays the single definition of the shape and both constrains generation and validates the result.
 
 **`pdf-parse` was dropped from the approved dependency list before it was ever installed.** Gemini takes a PDF as a `{ type: "document" }` input part, so Feature 07 sends the bytes and skips text extraction entirely — better on multi-column resumes, and image-only PDFs now work instead of returning empty. What is lost is the pre-flight readability check: we no longer know a PDF is unreadable until after the model call, so "could not extract" is now decided from an all-empty extraction result rather than from an empty `pdfData.text`.
 
@@ -507,5 +575,5 @@ Also closed: the download route answers a 404 with `text/plain` rather than the 
 - ~~**Sign-out has a route but no UI.**~~ Resolved 2026-07-29 — `components/auth/LogoutButton.tsx` sits in the `/profile` header. The button itself still has never been clicked.
 - **Feature 04 verification.** All four tables confirmed present with `relrowsecurity = true` and one `FOR ALL TO authenticated` policy each. FK to `auth.users` proven by inserting a row keyed on the real signed-in user; the `updated_at` trigger fired on update. `jobs.source = 'linkedin'`, `match_score = 150` and an orphan `user_id` were all rejected. Over HTTP, an `anon`-key request returned `permission denied for table profiles` (HTTP 401) on both `GET` and `POST`. All test rows deleted afterwards — the four tables are empty.
 - **The `resumes` bucket is private** (`isPublic: false`), created via `create-bucket`. Objects live at `{user_id}/resume.pdf` inside it.
-- **Feature 03 verification.** `login_page_viewed`, `oauth_sign_in_started`, `oauth_sign_in_failed` and `user_signed_in` were all confirmed leaving the browser and reaching `us.i.posthog.com`, decoded from the gzipped `/e/` and `/i/v0/e/` request bodies. `user_logged_out` is **unverified** — it needs a real session, so it gets confirmed by the same click that closes out Feature 02. Nothing has been confirmed _inside_ the PostHog UI; delivery was verified at the network layer.
+- **Feature 03 verification.** `login_page_viewed`, `oauth_sign_in_started`, `oauth_sign_in_failed` and `user_signed_in` were all confirmed leaving the browser and reaching `us.i.posthog.com`, decoded from the gzipped `/e/` and `/i/v0/e/` request bodies. `user_logged_out` is **unverified** — it needs a real session, so it gets confirmed by the same click that closes out Feature 02. Nothing has been confirmed *inside* the PostHog UI; delivery was verified at the network layer.
 - **Feature 01 verification:** `npx tsc --noEmit` and `npm run lint` clean; design tokens and `--font-sans` confirmed resolving in the compiled CSS; no horizontal overflow at 1440px or 430px (`scrollWidth === clientWidth`, zero offending elements); rendering compared against `public/landing-page.png`.
