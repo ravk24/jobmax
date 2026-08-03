@@ -9,7 +9,7 @@ Update this file after every completed feature. Any AI agent reading this should
 **Phase:** Phase 4 — Job Details Page
 **Last completed:** 12 Job Details Page (2026-08-03), verified in the browser signed in against real rows — a scored job, an unscored job, both missing-job paths and the loading skeleton. Nothing in the app 404s any more. **Its eight review findings were then triaged the same day** (`ed13b15`, `6e0ecc9`, `8921264` — five fixed, one accepted, two deferred; see § Feature 12 § Review findings triaged).
 **In progress:** 06 Profile Save Logic, 07 AI Profile Extraction and 08 Resume PDF Generation — **all three code complete, all three awaiting the same signed-in click-through.** Static checks pass throughout. 02 Auth is still open on GitHub sign-in and the Log out click — but the button is now mounted and reachable for the first time, see § Feature 12.
-**Next:** 13 Company Research Agent — the card, its empty state and its button shell are already on the page; Feature 13 supplies the behaviour, the `company_research` column in the query, and the branch that renders the dossier. The Feature 06/07/08 walkthrough is still owed and is independent of Phase 4; see § Feature 07 and § Feature 08 for the matrices.
+**Next:** Phase 5 — 14 Dashboard Page. (13 Company Research Agent was built **and verified live** the same day — three real runs against manpowergroup.com covering the happy path, a real-world 502 degrade, and the re-run overwrite; two live findings fixed during verification, see § Feature 13.) The Feature 06/07/08 walkthrough is still owed and is independent; see § Feature 07 and § Feature 08 for the matrices.
 
 ---
 
@@ -38,7 +38,7 @@ Update this file after every completed feature. Any AI agent reading this should
 ### Phase 4 — Job Details Page
 
 - [x] 12 Job Details Page — Full UI, wired to real rows; Company Research card is the empty state and button shell only
-- [ ] 13 Company Research Agent
+- [x] 13 Company Research Agent — verified live: real dossier from 3 pages of manpowergroup.com, degraded path exercised by a real 502, re-run overwrite confirmed
 
 ### Phase 5 — Dashboard
 
@@ -539,6 +539,53 @@ The eight findings that shipped unresolved in `5e30c44` were triaged: five fixed
 - **Case-insensitive skill duplicates still render twice** ("React"/"react") — the render-side dedupe is exact-match, which is all the key collision needed. The real fix is normalization in `agent/matcher.ts`, deliberately out of scope for a render-side triage. **Owed whenever the matcher is next touched.**
 
 The five fixes were verified statically only (`tsc`, `lint`, `build`) — **no browser re-verification happened**, against this project's click-verification habit. Low risk: attribute-level and semantic changes, and the scheme guard is a no-op for every current row (all Adzuna https URLs). If anything on the details page looks off next session, re-check these five first.
+
+---
+
+### Feature 13 — Company Research Agent (built 2026-08-03, awaiting click-through)
+
+**What shipped.** `agent/research.ts` (the whole run), `app/api/agent/research/route.ts`, `lib/browserbase.ts`, `lib/stagehand.ts`, `ResearchOutcome` in `agent/types.ts`, `company_research` in `JOB_DETAIL_COLUMNS`/`jobDetailSchema`/`JobDetail`, and the UI split: `ResearchButton.tsx` (client, the fetch + pending + error line) mounted inside `CompanyResearch.tsx` (server, empty state or nine dossier sections). `/architect` ran first; the three decisions it put to the user: **re-run overwrites** (button becomes "Research Again"), **research owns an `agent_runs` row with the search columns null** (no migration — a research run is recognisable by exactly that), **sources render as sanitized links**.
+
+**Stagehand 3.7.1 is the v3 API, and two documented shapes were wrong.** `extract()` is positional — `extract(instruction, zodSchema, { timeout })` — not the `{ instruction, schema }` object every context doc showed; and the page accessor is `stagehand.context.activePage()`, which returns `Page | undefined` (`stagehand.page` does not exist). `library-docs.md` and `architecture.md` were corrected against the installed types. `Stagehand` is an alias of the `V3` class; the constructor shape the docs taught (`browserbaseSessionID`, `model: { modelName, apiKey }`, `disablePino`) is real.
+
+**The route holds the connection for the whole run — the docs said the opposite.** `library-docs.md`'s old Browserbase note ("the route returns while the session continues") misdescribed the design: only the browser is remote; every extraction and the synthesis are awaited in the route, so a run is ~40s–3min of held connection. Corrected, with the serverless `maxDuration = 300` caveat recorded for a future deploy. A client navigating away does not cancel the run — it completes and saves.
+
+**Synthesis: seed, default thinking, 2500 tokens — overriding two stale numbers.** The build plan's `temperature: 0.4` does not exist on the Interactions API (the same correction Feature 10 made for scoring), and the documented 800-token budget paired with default thinking is the exact broken-JSON failure Feature 08 measured (767 thought tokens on a *smaller* task). Research is the one task that keeps default thinking — fusing three sources is deliberation — so the budget was sized for thought plus nine fields. Extraction meanwhile runs on Stagehand's own Gemini calls against the **same** `GEMINI_API_KEY` quota: an extraction 429 degrades that page (or the whole browse) to synthesis-only; **only a synthesis 429 surfaces as the route's 429.**
+
+**Homepage derivation is the spec plus three hardenings.** Following the apply-link redirect server-side (`fetch(redirect: "follow")`, root-domain strip, `www.{company}.com` fallback) is build-plan's recipe; what it lacked: a 10s `AbortSignal.timeout` (a hanging redirect chain would eat the run before the browser opened), a multi-part-TLD allowlist (`jobs.foo.co.uk` must not become `co.uk` — gb/au rows exist), and an ATS denylist (greenhouse/lever/workday/ashby/smartrecruiters/icims/bamboohr — stripping subdomains there yields the ATS's homepage, not the employer's).
+
+**Sources are the pages extraction actually visited, not the model's citations.** The model can cite pages it never saw, so when the browse succeeded the visited list overwrites `sources`; the model's own list survives only synthesis-only runs, filtered to http(s). Read-side, `jobDetailSchema` guards each source through the same `httpUrlOrNull` as `external_apply_url` — the registry's schema-guard rule, applied both ends.
+
+**A dossier written without the site says so.** `browsed: false` surfaces as a notice line under the button ("written from the job posting and your profile") — the Feature 08 degrade-and-admit rule. Browser failure is never a run failure; only synthesis or the save fail a run. First real use of `agent_logs.job_id`: every log row in a research run carries the job.
+
+**Known-accepted gaps** (from the plan, unchanged): no rate/cost ceiling per click; no cross-tab concurrent-run guard (second tab's browser fails → degrades → overwrites); no persistent "running" indicator across navigation.
+
+#### Verified live, signed in, same day (2026-08-03)
+
+`npx tsc --noEmit`, `npm run lint`, `npm run build` all clean, `/api/agent/research` in the build output, no server-only leak through `ResearchButton`.
+
+Three real runs against ManpowerGroup (85% row), all three `completed` in `agent_runs` with null search columns, every `agent_logs` row carrying the `job_id`. The Stagehand model config authenticated against Gemini on its first live use. **The happy path end to end:** homepage + 2 sub-pages read (`manpowergroup.com`, `/What%20We%20Do`, `/Insights`), dossier in ~53s with real facts (NYSE: MAN, Manpower/Experis/Talent Solutions, the MyPath programme), Sources rendering exactly the three visited URLs as muted links, button flipped to "Research Again", hard reload persisted it. **The degraded path, courtesy of the real world:** the first run hit ManpowerGroup mid-outage (Cloudflare 502) and produced an honest synthesis-only dossier with the notice line under the button. **Re-run overwrites** verified — the inferred dossier was replaced by the browsed one. Unauthenticated `POST` → 401 with the standard body. Console clean.
+
+**Two findings surfaced live and were fixed during verification:**
+
+1. **One click started two runs.** The second click event landed ~100ms after the first — before React committed the `disabled` re-render — so two full runs raced (two sessions, two syntheses, double save with last-writer-wins). `ResearchButton` now carries a synchronous `useRef` in-flight guard alongside the state; the state still drives the label, the ref drives re-entry. A human double-click is the same event sequence, so this was a user-reachable bug, not an automation artefact.
+2. **A 502 page passed the empty-site check.** The extraction *described* the error page — non-empty `oneLiner` — so `!oneLiner && !productSummary` never fired, and the run logged "1 page researched" with the 502 page as a source. The fix is deterministic rather than heuristic: `page.goto()` returns a Playwright-style `Response`, and any non-`ok()` homepage bails to synthesis-only (a non-`ok()` sub-page is skipped) **before** an extraction call is spent. The check caught its first real case minutes later — the model hallucinated an `/About%20Us` link that answered 404 and was skipped, logged, and excluded from sources.
+
+#### Not verified
+
+The Browserbase dashboard was not opened to visually confirm sessions closed (indirect evidence: all runs completed, none hung, no session-limit errors on the re-run). The unset-`BROWSERBASE_API_KEY` degrade was not staged — the real 502 exercised the same synthesis-only path. Navigate-away-mid-run untested (the route completes and saves regardless; accepted). PostHog `company_researched` delivery unverified at the network layer — the same standing item Feature 10 carries. A cosmetic Stagehand-internal log line ("Shutdown supervisor entry missing") appears at session start; runs complete regardless.
+
+#### Review findings (2026-08-03) — five Minor, all shipped unresolved
+
+`/review` passed plan alignment and system integrity; the two serious live findings were already fixed during verification. What remains, none blocking:
+
+1. **Homepage self-exclusion misses the www/apex mismatch** — `selectSubPages` excludes the homepage by hostname equality, but a redirect-derived homepage is apex (`https://{root}`) while page links are usually `www.` URLs, so one of the three sub-page slots can re-extract the homepage. Costs an extraction call, never correctness.
+2. **Validation-failure detail dies in `agent_logs`** — `logAgentError` stringifies zod issues to `[object Object]`; the detail survives only in the server console.
+3. **Malformed JSON body → 500, not 400** — `await req.json()` throws into the outer catch. Inherited: `find/route.ts` behaves identically; fix both together or accept both.
+4. **⚠ Feature 15/16 requirement, not a bug here:** research runs live in `agent_runs` with null search columns (decision 2). **Any dashboard stat that counts `agent_runs` as "searches" must filter on `job_title_searched IS NOT NULL`** or research runs inflate it. Recorded here so it is a requirement going into Phase 5, not a surprise during it.
+5. **A repaired-empty company name** renders "Researching ." in logs and skips the fallback URL — cosmetic, unreachable for current rows.
+
+Also restated by review, pre-existing: AGENTS.md's "AgentSpan step IDs `apply-{job_id}`" invariant has no counterpart anywhere in the code; the logging model is flat run + leveled messages.
 
 ---
 

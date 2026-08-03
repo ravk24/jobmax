@@ -221,17 +221,18 @@ async function countJobs(
 
 // The details page reads more columns than the table, but still not `*`:
 // responsibilities, requirements, nice_to_have, benefits and about_company are
-// never written by Feature 10 and the page does not render them, and
-// company_research belongs to Feature 13 along with the card that shows it.
+// never written by Feature 10 and the page does not render them.
+// company_research joined in Feature 13, together with the dossier branch that
+// renders it.
 const JOB_DETAIL_COLUMNS =
-  "id,company,title,location,salary,job_type,about_role,match_score,match_reason,matched_skills,missing_skills,external_apply_url,found_at";
+  "id,company,title,location,salary,job_type,about_role,match_score,match_reason,matched_skills,missing_skills,external_apply_url,found_at,company_research";
 
-// external_apply_url is the one column whose value becomes a navigable href,
-// and nothing constrains it — the column is bare text and jobs.source allows
-// 'url' for manual import. React 19 already neutralises javascript: hrefs, but
-// no other scheme, so anything that is not a web URL degrades to null here and
-// the page renders its existing no-link disabled button instead of a link.
-function httpUrlOrNull(value: string | null): string | null {
+// Guards every column whose value becomes a navigable href — external_apply_url
+// and the dossier's sources — none of which the database constrains. React 19
+// already neutralises javascript: hrefs, but no other scheme, so anything that
+// is not a web URL degrades to null here and the page renders its no-link
+// state instead of a link.
+function httpUrlOrNull(value: string | null, column: string): string | null {
   if (value === null) {
     return null;
   }
@@ -245,10 +246,10 @@ function httpUrlOrNull(value: string | null): string | null {
     // Not parseable as a URL at all — same answer as a wrong scheme.
   }
 
-  // Logged because this is the one repair in jobDetailSchema that nullifies
+  // Logged because these are the repairs in jobDetailSchema that nullify
   // valid-looking data: a scheme-less URL from a manual import would otherwise
-  // lose its apply link with no discoverable trace.
-  console.error("[lib/jobs-query] external_apply_url stripped, not http(s):", value);
+  // lose its link with no discoverable trace.
+  console.error(`[lib/jobs-query] ${column} stripped, not http(s):`, value);
   return null;
 }
 
@@ -269,8 +270,37 @@ const jobDetailSchema = z.object({
   match_reason: z.string().nullable().catch(null),
   matched_skills: z.array(z.string()).nullable().catch(null),
   missing_skills: z.array(z.string()).nullable().catch(null),
-  external_apply_url: z.string().nullable().catch(null).transform(httpUrlOrNull),
+  external_apply_url: z
+    .string()
+    .nullable()
+    .catch(null)
+    .transform((value) => httpUrlOrNull(value, "external_apply_url")),
   found_at: z.string().catch(""),
+  // Written by agent/research.ts. Lenient at the outer layer like every read
+  // here — malformed jsonb degrades to null and the card shows its empty state
+  // — but the inner shape is strict, so a partial dossier cannot render half a
+  // card. sources render as links, so each entry gets the same http(s) guard as
+  // external_apply_url: defense-in-depth behind the agent's save-time sanitize.
+  company_research: z
+    .object({
+      companyOverview: z.string(),
+      techStack: z.array(z.string()),
+      culture: z.array(z.string()),
+      whyThisRole: z.string(),
+      yourEdge: z.array(z.string()),
+      gapsToAddress: z.array(z.string()),
+      smartQuestions: z.array(z.string()),
+      interviewPrep: z.array(z.string()),
+      sources: z
+        .array(z.string())
+        .transform((urls) =>
+          urls
+            .map((url) => httpUrlOrNull(url, "company_research.sources"))
+            .filter((url): url is string => url !== null),
+        ),
+    })
+    .nullable()
+    .catch(null),
 });
 
 // A uuid the database will accept. Checked before the query, not after, because

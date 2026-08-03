@@ -90,7 +90,11 @@ export default async function JobDetailsPage({ params }: Props) {
                 missing={result.job.missing_skills}
               />
               <JobDescription aboutRole={result.job.about_role} />
-              <CompanyResearch company={result.job.company} />
+              <CompanyResearch
+                company={result.job.company}
+                jobId={result.job.id}
+                research={result.job.company_research}
+              />
               <JobActions
                 company={result.job.company}
                 applyUrl={result.job.external_apply_url}

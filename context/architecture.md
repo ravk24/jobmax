@@ -457,42 +457,39 @@ const data = await response.json();
 
 ## Company Research Pattern
 
+Built in Feature 13 — `agent/research.ts` is the reference implementation, and
+`library-docs.md § Stagehand` documents the installed v3 API. The shape:
+
 ```typescript
-// Single session — visits company homepage and sub pages sequentially
-const stagehand = new Stagehand({
-  env: "BROWSERBASE",
-  apiKey: process.env.BROWSERBASE_API_KEY!,
-  projectId: process.env.BROWSERBASE_PROJECT_ID!,
-  browserbaseSessionID: session.id,
-  model: {
-    modelName: "google/gemini-3.6-flash",
-    apiKey: process.env.GEMINI_API_KEY!,
-  },
-});
+// Single session — visits company homepage and sub pages sequentially.
+// createResearchSession() in lib/browserbase.ts, createStagehand(sessionId) in
+// lib/stagehand.ts. Stagehand v3 (verified against installed 3.7.1 types):
+// the active page comes from stagehand.context.activePage(), which can return
+// undefined — there is no stagehand.page on this version — and extract() is
+// positional: extract(instruction, zodSchema, { timeout }).
+const session = await createResearchSession();
+const stagehand = await createStagehand(session.id);
+const page = stagehand.context.activePage(); // undefined → degrade
 
-await stagehand.init();
-const page = stagehand.page;
+// Homepage URL comes from following the job's apply link with a plain
+// server-side fetch(redirect: "follow") and stripping the landing host to its
+// root domain — build-plan.md § Feature 13 has the recipe;
+// deriveHomepageUrl() in agent/research.ts implements it, with a fetch
+// timeout, multi-part-TLD handling (co.uk, com.au) and an ATS denylist
+// (greenhouse, lever, workday…) the sketch here used to lack. Guessing
+// https://www.{company}.com is the fallback, not the first resort.
 
-// Clean company name and construct homepage URL
-const cleanName = companyName
-  .replace(/\s*(Inc\.?|LLC|Ltd\.?|Corp\.?|Co\.?).*$/i, "")
-  .trim()
-  .toLowerCase()
-  .replace(/\s+/g, "");
-
-const homepageUrl = `https://www.${cleanName}.com`;
-
-// Navigate and extract — graceful fallback if page not found
+// Navigate and extract — graceful degrade if a page will not read
 try {
-  await page.goto(homepageUrl);
-  await page.waitForLoadState("networkidle");
-  const content = await stagehand.extract({ instruction: "..." });
+  await page.goto(homepageUrl, { timeoutMs: 20_000 });
+  const content = await stagehand.extract(instruction, schema, {
+    timeout: 30_000,
+  });
 } catch (error) {
-  // Log and continue — Gemini will synthesize from what was found
-  await logAgentError(jobId, error);
+  // Log and continue — Gemini synthesizes from whatever was collected
 }
 
-// Always close session when done
+// Always close, in a finally — a browser failure is never a run failure
 await stagehand.close();
 ```
 

@@ -42,7 +42,7 @@ The AI agent on this project operates as a senior engineer. This means:
   - Event listeners
   - Third party client-only libraries (PostHog browser side)
 - Never add `"use client"` to layout files unless absolutely required
-- Data fetching happens in Server Components — never fetch in Client Components directly. **One sanctioned exception:** a client component may `fetch()` an own-origin API route when it is performing a *mutation* that a Server Action cannot carry — today that means file upload only, because Server Action bodies are capped at 1MB (`ResumeUpload` → `POST /api/resume/upload`). Reads are never fetched from a client component. Any such call needs its own try/catch and a user-visible error
+- Data fetching happens in Server Components — never fetch in Client Components directly. **One sanctioned exception:** a client component may `fetch()` an own-origin API route when it is performing a *mutation* that a Server Action cannot carry. Today that means two cases: file upload, because Server Action bodies are capped at 1MB (`ResumeUpload` → `POST /api/resume/upload`), and agent triggers, because architecture.md forbids Server Actions from calling agent functions (`SearchControls` → `POST /api/agent/find`, `ResearchButton` → `POST /api/agent/research`). Reads are never fetched from a client component. Any such call needs its own try/catch and a user-visible error
 - Route handlers live in `app/api/` — never put business logic directly in route handlers
 - Server Actions live in `actions/` — never define Server Actions inline in components
 - **Middleware is called Proxy in Next.js 16** — the file is `proxy.ts` at the project root exporting `proxy()`. `middleware.ts` is deprecated; never create one.
@@ -244,7 +244,7 @@ The events the dashboard charts are built on. Each belongs to a feature that has
 | `job_search_started` | Find Jobs button clicked                   | userId, jobTitle, location | built Feature 10   |
 | `job_found`          | Each job discovered and saved              | userId, source, matchScore | built Feature 10   |
 | `profile_completed`  | User saves complete profile for first time | userId                     | built Feature 06   |
-| `company_researched` | Company research dossier generated         | userId, jobId, company     | pending Feature 13 |
+| `company_researched` | Company research dossier generated         | userId, jobId, company     | built Feature 13   |
 
 `job_found` powers the Jobs Found Over Time and Match Score Distribution dashboard charts.
 `company_researched` powers the Company Research Activity dashboard chart.

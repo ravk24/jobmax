@@ -125,9 +125,9 @@ export type JobsResult =
   | { status: "error" };
 
 // What the job details page renders, derived from Job for the same reason
-// JobListItem is. company_research is deliberately absent: Feature 12 renders
-// the research card's empty state only, and selecting the column would create a
-// populated case with nothing to render it. Feature 13 adds both together.
+// JobListItem is. company_research joined in Feature 13, in the same change as
+// the query column and the dossier branch that renders it — the three always
+// travel together.
 export type JobDetail = Pick<
   Job,
   | "id"
@@ -143,6 +143,7 @@ export type JobDetail = Pick<
   | "missing_skills"
   | "external_apply_url"
   | "found_at"
+  | "company_research"
 >;
 
 // Three answers, not two. "empty" covers both a job that does not exist and one

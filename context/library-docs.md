@@ -427,8 +427,8 @@ const session = await bb.sessions.create({
 });
 ```
 
-**Important — Browserbase runs independently from your Next.js server:**
-Browserbase sessions run on Browserbase's cloud infrastructure, not inside your Next.js API route. The API route triggers the Browserbase session and returns a response while the session continues running independently on Browserbase's platform. Do not add `maxDuration` or any timeout configuration to Next.js API routes to accommodate Browserbase session length.
+**Important — only the browser runs on Browserbase; the route waits for the run (corrected in Feature 13):**
+An earlier version of this note claimed the API route "triggers the session and returns while it continues running". That does not describe this codebase: only the *browser* lives on Browserbase's infrastructure — every `extract()` call and the Gemini synthesis are awaited inside `/api/agent/research`, so the route holds its connection for the whole run (roughly 40 seconds to 3 minutes; worst case ≈ 10s redirect-follow + 120s session cap + 90s synthesis). On the local node server this needs no configuration. **If this app ever deploys to a serverless platform, the route needs `export const maxDuration = 300`** — the opposite of what this note used to say. A client that navigates away does not cancel the server run; it completes and saves, and the dossier is there on return.
 
 **Rules:**
 
@@ -446,67 +446,60 @@ Browserbase sessions run on Browserbase's cloud infrastructure, not inside your 
 
 ### Initialisation
 
+Installed at **3.7.1** (the v3 API — `Stagehand` is an alias of the `V3` class). Initialisation lives in `lib/stagehand.ts`; never construct inline. Verified against the installed types in Feature 13:
+
 ```typescript
 import { Stagehand } from "@browserbasehq/stagehand";
 
 const stagehand = new Stagehand({
   env: "BROWSERBASE",
-  apiKey: process.env.BROWSERBASE_API_KEY!,
-  projectId: process.env.BROWSERBASE_PROJECT_ID!,
+  apiKey: process.env.BROWSERBASE_API_KEY,
+  projectId: process.env.BROWSERBASE_PROJECT_ID,
   browserbaseSessionID: session.id,
   model: {
+    // Provider-prefixed. lib/stagehand.ts derives this from GEMINI_MODEL so
+    // lib/gemini.ts stays the single place the model is pinned.
     modelName: "google/gemini-3.6-flash",
-    apiKey: process.env.GEMINI_API_KEY!,
+    apiKey: getGeminiApiKey(),
   },
   disablePino: true,
 });
 
 await stagehand.init();
-const page = stagehand.context.activePage()!;
+// Returns Page | undefined — handle the undefined, never assert it away.
+const page = stagehand.context.activePage();
 ```
 
 ### extract()
 
+**Positional in v3, not an options object** — an earlier version of this file taught `extract({ instruction, schema })`, which does not type-check on 3.7.1. The signature is `extract(instruction, zodSchema, options?)`, where options carries `timeout` (ms). `extract()` reads the **current** page — every extraction is preceded by a `page.goto()`.
+
 ```typescript
 import { z } from "zod";
 
-const result = await stagehand.extract({
-  instruction:
-    "Extract the company overview, main product description, and any technology mentions from this page.",
-  schema: z.object({
+const result = await stagehand.extract(
+  "Extract the company overview, main product description, and any technology mentions from this page.",
+  z.object({
     companyOverview: z.string().optional(),
     mainProduct: z.string().optional(),
     techMentions: z.array(z.string()).optional(),
-    navLinks: z
-      .array(
-        z.object({
-          label: z.string(),
-          url: z.string(),
-        }),
-      )
-      .optional(),
   }),
-});
+  { timeout: 30_000 },
+);
 ```
 
 ### act()
 
+Also positional in v3: `act(instruction, options?)`.
+
 ```typescript
 // Always wrap in try/catch
 try {
-  await stagehand.act({
-    action: "Click the About link in the navigation",
-  });
+  await stagehand.act("Click the About link in the navigation");
 } catch (error) {
-  await logAgentError(jobId, null, error);
+  await logAgentError(runId, userId, "act failed", error);
 }
 ```
-
-## Company Research Section
-
-Replace the existing Stagehand "Company Research Pattern" section in library-docs.md with this:
-
----
 
 ### Company Research Pattern
 
@@ -515,11 +508,12 @@ Job description and user profile come from DB — never re-fetch what you alread
 Browser's only job is the company website.
 
 ```typescript
-// Step 1 — Homepage extraction
-const homepageData = await stagehand.extract({
-  instruction:
-    "This is a company's homepage. Capture what the company actually does, who it's for, and any concrete signals (funding, customers, scale, mission, recent launches). Then find the internal links most worth visiting to research them as an employer.",
-  schema: z.object({
+// Step 1 — Homepage extraction (after page.goto(homepageUrl) — extract()
+// reads the current page; the homepage URL derivation lives in
+// deriveHomepageUrl() in agent/research.ts, per build-plan.md § Feature 13)
+const homepageData = await stagehand.extract(
+  "This is a company's homepage. Capture what the company actually does, who it's for, and any concrete signals (funding, customers, scale, mission, recent launches). Then find the internal links most worth visiting to research them as an employer.",
+  z.object({
     oneLiner: z.string().describe("What the company does in one sentence"),
     productSummary: z
       .string()
@@ -544,7 +538,7 @@ const homepageData = await stagehand.extract({
       )
       .describe("Internal links worth visiting"),
   }),
-});
+);
 
 // If oneLiner and productSummary are empty — wrong site or parked domain
 // Skip to synthesis with job description and profile only
@@ -553,11 +547,12 @@ if (!homepageData.oneLiner && !homepageData.productSummary) {
   // proceed to synthesis with empty companyResearch
 }
 
-// Step 2 — Sub-page extraction (max 3, prefer about/blog/engineering/product over careers)
-const subPageData = await stagehand.extract({
-  instruction:
-    "Extract substance that helps a candidate understand this company before applying: what they do, their values and how they work, the specific technologies and tools they use, notable projects or customers, and how the team operates. Ignore nav, footers, cookie banners, and generic marketing copy.",
-  schema: z.object({
+// Step 2 — Sub-page extraction (max 3, prefer about/blog/engineering/product
+// over careers; goto() each URL first — links resolved against the homepage,
+// kept http(s) and same-root-domain only)
+const subPageData = await stagehand.extract(
+  "Extract substance that helps a candidate understand this company before applying: what they do, their values and how they work, the specific technologies and tools they use, notable projects or customers, and how the team operates. Ignore nav, footers, cookie banners, and generic marketing copy.",
+  z.object({
     keyPoints: z.array(z.string()),
     technologies: z
       .array(z.string())
@@ -569,7 +564,7 @@ const subPageData = await stagehand.extract({
       .array(z.string())
       .describe("Customers, funding, scale, projects, awards"),
   }),
-});
+);
 
 // Step 3 — Gemini synthesis (after browser closes)
 // Feed three data sources: company research + job from DB + profile from DB
@@ -620,10 +615,19 @@ const interaction = await getGemini().interactions.create({
     mime_type: "application/json",
     schema: z.toJSONSchema(dossierSchema),
   },
-  generation_config: { temperature: 0.4, max_output_tokens: 800 },
+  // No temperature — it does not exist on the Interactions API (see § Google
+  // Gemini below). Default thinking level on purpose: fusing three sources is
+  // the one task here where deliberation is the point. Thinking tokens come
+  // out of this same budget (767 were measured on a smaller task), which is
+  // why it is 2500 and not the 800 an earlier version of this file taught —
+  // unused headroom is free.
+  generation_config: { seed: RESEARCH_SEED, max_output_tokens: 2500 },
 });
 
-const dossier = JSON.parse(interaction.output_text);
+// output_text is string | undefined — guard before parsing, validate with the
+// same zod schema that generated the constraint. agent/research.ts is the
+// reference implementation.
+const dossier = dossierSchema.parse(JSON.parse(interaction.output_text));
 ```
 
 **Dossier fields:**
@@ -646,7 +650,7 @@ const dossier = JSON.parse(interaction.output_text);
 - Always wrap every `act()` and `extract()` in try/catch
 - Always call `await stagehand.close()` when done — ends the Browserbase session
 - Model always comes from `GEMINI_MODEL` in `lib/gemini.ts` — never hardcode a model string
-- Temperature is `0.4` for synthesis — grounded but flexible enough to make real connections
+- Synthesis uses a fixed `seed` and the **default** thinking level with a `2500` token budget — there is no temperature on this API, and thinking spends from the same budget
 - Max 3 sub-pages — never exceed this on free plan
 - Always close session in finally block — never leave sessions open even if research fails
 - Job description and profile always come from DB — never re-fetch via browser
@@ -777,7 +781,7 @@ Resume generation moved to `"minimal"` in Feature 08. The instinct that "writing
 **Max output tokens** — a budget covering thinking *and* answer. Overrunning it returns unparseable JSON and loses the whole call, so size for the worst case:
 
 - Job matching + scoring: `300`
-- Company research synthesis: `800`
+- Company research synthesis: `2500` — raised from 800 in Feature 13: synthesis keeps the default thinking level, and thinking spends from the same budget (767 thought tokens were measured on a smaller task), so 800 risked the broken-JSON failure this section describes
 - Profile extraction from resume: `1200` — raised from 800 after measuring a two-role resume at 399 output tokens; three roles with twenty skills lands near the old ceiling. Output is billed as generated, so unused headroom is free.
 - Resume generation: `2000` — raised from 1000 in Feature 08. It is the largest response in the project: a summary plus up to three roles of bullets. The old figure was set alongside default thinking, a pairing that on the one measurement we have (`800` budget, `767` thought tokens, `14` emitted) returns nothing usable.
 
