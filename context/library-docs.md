@@ -876,6 +876,23 @@ await posthog.shutdown(); // required — ensures event is sent
 
 ---
 
+## Recharts
+
+**Check first:** No skill or MCP server is installed for recharts — this section and the installed types are the authority.
+
+Installed at **3.10.1** (v3 — a rewrite of v2; the component surface used here is unchanged, but verify anything beyond it against the installed `.d.ts` rather than training data). Added in Feature 14 for the three dashboard charts; Feature 17 swaps their mock props for PostHog data with no component changes.
+
+### Rules
+
+- **Client components only.** Recharts renders through browser measurement — every chart component carries `"use client"` and receives its data as props from a Server Component. No data fetching inside a chart.
+- **Colors are CSS variables, never hex.** SVG `stroke`/`fill` accept `var(--color-*)`, so the no-hardcoded-hex rule holds inside charts: line stroke `var(--color-accent)`, research bars `var(--color-info)`, match bars `var(--color-success)`, grid `var(--color-border)`, axis labels `var(--color-chart-axis)` (a chart-only token added for ui-tokens.md's `#9CA3AF` axis spec). The line chart's gradient fill is an SVG `<linearGradient>` with `stopColor="var(--color-accent)"` and `stopOpacity` — never an rgba literal.
+- **`ResponsiveContainer` needs an explicitly-sized parent.** It resolves percentage sizes against the nearest sized ancestor; inside an auto-height card it measures 0 and renders nothing. Every chart sits in a fixed-height wrapper (`h-[280px]` in the dashboard cards).
+- **Single-series charts carry no `<Legend>`** — the card heading names the series (dataviz rule; the design mock agrees).
+- **Grid and axes are recessive**: `CartesianGrid` dashed with `vertical={false}`, axes with `axisLine={false}` `tickLine={false}` and 12px ticks in the axis token. The data is the ink.
+- Charts per ui-tokens.md § Dashboard Chart Colors: Jobs Found Over Time = `AreaChart` (accent stroke, 3px, gradient fill); Company Research Activity and Match Score Distribution = `BarChart` (info / success fills).
+
+---
+
 ## @react-pdf/renderer
 
 **Check first:** Check AGENTS.md for an installed react-pdf skill. PDF generation APIs can differ from general training knowledge.

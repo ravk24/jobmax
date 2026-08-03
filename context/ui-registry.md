@@ -848,6 +848,38 @@ Seven stacked cards in a 940px column. Source: `context/design/job-details.png`.
 
 ---
 
+### Dashboard page
+
+Files: `app/dashboard/page.tsx`, `components/dashboard/*`
+Last updated: 2026-08-03
+
+Source: `context/design/dashboard.png`. Stats and charts render mock data from `lib/dashboard-mock.ts` until Features 15/16/17; the incomplete-profile banner is real.
+
+| Property | Class |
+| --- | --- |
+| Column | `mx-auto flex max-w-[1440px] flex-col gap-6` inside `flex-1 bg-background px-6 py-8` — the wide app column; job details keeps its 940px one |
+| Stat card | card recipe `p-6`; label `text-sm leading-5 font-medium text-text-secondary`; value `text-3xl leading-9 font-semibold text-text-primary`; caption `text-xs leading-4 text-text-muted` |
+| Trend badge | `rounded-sm bg-success-lightest px-2 py-0.5 text-xs leading-4 font-medium text-success-darker` — the ui-tokens trend badge, `rounded-sm` not pill |
+| Stats grid | `grid gap-6 sm:grid-cols-2 xl:grid-cols-4` |
+| Chart rows | `grid gap-6 lg:grid-cols-[2fr_3fr]` (activity + research) and `lg:grid-cols-[3fr_2fr]` (line + distribution) |
+| Activity dot | outer `size-4 rounded-full` tint wrapping inner `size-2 rounded-full` — search `bg-success-light`/`bg-success-alt`, research `bg-info-light`/`bg-info` |
+| Activity connector | `mt-1 w-px flex-1 bg-border` under every dot except the last; text rows carry `pb-5` except the last |
+| Activity text | `text-sm leading-5 font-medium text-text-primary` + `mt-0.5 text-xs leading-4 text-text-muted` timestamp |
+| List card header | `border-b border-border p-6` on an `overflow-hidden` card — the job-details card-header pattern without the action slot |
+| Chart card | card recipe `p-6`; section heading; `mt-4 h-[280px]` wrapper (ResponsiveContainer measures 0 in an unsized parent) |
+| Chart colors | line `var(--color-accent)` 3px + gradient fill 0.25→0; research bars `var(--color-info)`; match bars `var(--color-success)`; grid dashed `var(--color-border)`; axis ticks `var(--color-chart-axis)` 12px; bar `radius={[4,4,0,0]}` `maxBarSize={40}` |
+| Banner | `flex flex-wrap items-center gap-4` card at `p-4` (tile padding); failure medallion (`size-10 rounded-full bg-accent-muted` + `AlertCircle size-5 text-error`); CTA `Button asChild variant="outline" size="cta"` |
+
+**Pattern notes:**
+**Charts are the second sanctioned non-Tailwind styling surface**, after the match-bar inline width: recharts styling rides on component/SVG props, so every colour is a `var(--color-*)` reference and the no-hex rule holds. `library-docs.md § Recharts` is the contract; do not hand a recharts prop a hex literal.
+**`--color-chart-axis` exists only for charts.** ui-tokens.md specifies `#9CA3AF` axis labels, which is *not* `text-muted` (`#99A1AF`) — the two look interchangeable and are not; do not "fix" one into the other.
+**Three chart components, not one `AnalyticsCharts.tsx`.** The mock interleaves charts with the activity card across two grid rows, so no single wrapper can own the layout — and one component per file stands. Recorded in the tracker as a deviation from `architecture.md`'s component list, same shape as Feature 12's `MatchScore` split.
+**Activity dot colours key off the entry type, never the mock's pixels.** The mock's purple dots belong to out-of-scope activity kinds (resume tailoring); the two real kinds follow Feature 16's rule — search = success, research = info.
+**Single-series charts carry no legend** — the card heading names the series (the dataviz rule; the design agrees). Hover tooltips are styled with the same tokens (`surface`/`border`/12px) so the chart's one interactive layer stays inside the system.
+**The banner guards itself** (`missingFields.length === 0` → `null`), so the page composes it unconditionally and the mock's bannerless layout is the complete-profile rendering, not a separate branch.
+
+---
+
 ### Profile page shell / app header — RETIRED
 
 File: `app/profile/page.tsx`

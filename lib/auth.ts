@@ -13,9 +13,7 @@ export const PROTECTED_ROUTES = ["/dashboard", "/profile", "/find-jobs"];
 
 export const LOGIN_ROUTE = "/login";
 
-// Points at /profile until the dashboard exists (Feature 14). architecture.md
-// specifies /dashboard as the post-login destination — restore it then.
-export const POST_LOGIN_ROUTE = "/profile";
+export const POST_LOGIN_ROUTE = "/dashboard";
 
 export function isOAuthProvider(value: string): value is OAuthProvider {
   return (OAUTH_PROVIDERS as readonly string[]).includes(value);

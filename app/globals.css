@@ -72,6 +72,10 @@
   --color-overlay: #111827;
   --color-overlay-dark: #131316;
 
+  /* Chart axis labels — ui-tokens.md § Dashboard Chart Colors specifies
+     #9CA3AF, which no text token matches (text-muted is #99A1AF). */
+  --color-chart-axis: #9ca3af;
+
   /* Border radius */
   --radius-sm: 4px;
   --radius-md: 8px;

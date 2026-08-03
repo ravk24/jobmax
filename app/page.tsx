@@ -17,7 +17,7 @@ export default async function HomePage() {
     <>
       <Navbar
         ctaHref={ctaHref}
-        ctaLabel={user ? "Go to profile" : "Start for free"}
+        ctaLabel={user ? "Go to dashboard" : "Start for free"}
       />
       <main className="flex-1">
         <Hero ctaHref={ctaHref} />

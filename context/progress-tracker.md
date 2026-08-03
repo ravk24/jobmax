@@ -6,10 +6,10 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ## Current Status
 
-**Phase:** Phase 4 — Job Details Page
-**Last completed:** 12 Job Details Page (2026-08-03), verified in the browser signed in against real rows — a scored job, an unscored job, both missing-job paths and the loading skeleton. Nothing in the app 404s any more. **Its eight review findings were then triaged the same day** (`ed13b15`, `6e0ecc9`, `8921264` — five fixed, one accepted, two deferred; see § Feature 12 § Review findings triaged).
-**In progress:** 06 Profile Save Logic, 07 AI Profile Extraction and 08 Resume PDF Generation — **all three code complete, all three awaiting the same signed-in click-through.** Static checks pass throughout. 02 Auth is still open on GitHub sign-in and the Log out click — but the button is now mounted and reachable for the first time, see § Feature 12.
-**Next:** Phase 5 — 14 Dashboard Page. (13 Company Research Agent was built **and verified live** the same day — three real runs against manpowergroup.com covering the happy path, a real-world 502 degrade, and the re-run overwrite; two live findings fixed during verification, see § Feature 13.) The Feature 06/07/08 walkthrough is still owed and is independent; see § Feature 07 and § Feature 08 for the matrices.
+**Phase:** Phase 5 — Dashboard
+**Last completed:** 14 Dashboard Page — Full UI (2026-08-03), verified in the browser signed in: all four stat cards, five activity entries and three recharts charts render against `lib/dashboard-mock.ts` matching `context/design/dashboard.png`; `POST_LOGIN_ROUTE` and the homepage CTA reverted to `/dashboard` and both landings verified. See § Feature 14.
+**In progress:** 06 Profile Save Logic, 07 AI Profile Extraction and 08 Resume PDF Generation — **all three code complete, all three awaiting the same signed-in click-through.** Static checks pass throughout. 02 Auth is still open on GitHub sign-in and the Log out click.
+**Next:** 15 Stats Bar — Real Data. **Carry-forward requirement from § Feature 13 review:** any stat or activity read that counts `agent_runs` as searches must filter `job_title_searched IS NOT NULL`, or research runs inflate it. The Feature 06/07/08 walkthrough is still owed and is independent; see § Feature 07 and § Feature 08 for the matrices.
 
 ---
 
@@ -42,7 +42,7 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ### Phase 5 — Dashboard
 
-- [ ] 14 Dashboard Page — Full UI
+- [x] 14 Dashboard Page — Full UI (mock stats/activity/charts; the incomplete-profile banner is real)
 - [ ] 15 Stats Bar — Real Data
 - [ ] 16 Recent Activity — Real Data
 - [ ] 17 Analytics Charts — PostHog Data
@@ -586,6 +586,36 @@ The Browserbase dashboard was not opened to visually confirm sessions closed (in
 5. **A repaired-empty company name** renders "Researching ." in logs and skips the fallback URL — cosmetic, unreachable for current rows.
 
 Also restated by review, pre-existing: AGENTS.md's "AgentSpan step IDs `apply-{job_id}`" invariant has no counterpart anywhere in the code; the logging model is flat run + leveled messages.
+
+---
+
+### Feature 14 — Dashboard Page — Full UI (2026-08-03)
+
+**Built from `project-overview.md` and the design mock, not `build-plan.md`'s list — as Feature 01 already decided.** The four stat cards are Total Jobs Found, Avg. Match Rate, Companies Researched, Jobs This Week; the three charts are Company Research Activity, Jobs Found Over Time and Match Score Distribution. Build-plan's "Cover Letters Generated" card and "Resume Tailoring Activity" chart stay unbuilt — both features are out of scope.
+
+**recharts 3.10.1 installed** — the first new dependency since zod. Feature 17 mandates it, so building the chart UI with it now means 17 swaps mock props for PostHog data with no component changes. Added to `code-standards.md`'s approved list and documented in a new `library-docs.md § Recharts`: client components only, every colour a `var(--color-*)` reference (SVG props take CSS variables, so the no-hex rule holds inside charts), `ResponsiveContainer` requires a fixed-height wrapper (`h-[280px]`) or it measures 0 and renders nothing.
+
+**`--color-chart-axis` (#9ca3af) added to `@theme`** — ui-tokens.md specifies that exact grey for axis labels twice, and no text token matches it (`text-muted` is `#99A1AF`, a different grey). A chart-only token keeps the hex out of components without bending an existing token's meaning.
+
+**Three chart components instead of the prescribed `AnalyticsCharts.tsx`** — `architecture.md:96-98` lists one file, but the mock's grid interleaves the research chart with the Recent Activity card and puts the other two in a second row, so no single component can own that layout; and one component per file stands. Same documented-deviation shape as Feature 12's `MatchScore` split. `StatsBar` and `RecentActivity` keep their prescribed names.
+
+**The incomplete-profile banner is real data, deliberately, on a mock page.** `project-overview.md` requires it and no later feature wires the dashboard's banner, so building it mock would have left it mock forever. It reuses `readProfile()` + `calculateCompletion()`; a profile read *error* renders the dashboard without the banner rather than a failure card — the dashboard must not block on a row it only decorates from, and `/profile` owns that failure state. The component nulls itself when `missingFields` is empty, so the page composes it unconditionally.
+
+**`POST_LOGIN_ROUTE` restored to `/dashboard` and the homepage CTA to "Go to dashboard"** — closing the deferral § Feature 02 recorded. Both verified in the browser: a signed-in `/login` visit redirects to `/dashboard`, and the CTA lands there. `AppNavbar`'s `Logo href="/dashboard"` stopped 404ing with no change.
+
+**Activity dots follow Feature 16's colour rule, not the mock's pixels.** The mock paints some dots purple — those rows belong to out-of-scope activity types. The two real kinds: search = success green, research = info blue.
+
+**The dataviz palette validator was run** on the three chart hues (accent/info/success): all checks pass; a contrast warning on the info and success fills against white (<3:1) is relieved by visible axis labels and hover tooltips. **Feature 17 must keep axis labels and tooltips when it rewires the data** — they are the accessibility relief, not decoration.
+
+**Mock data lives in `lib/dashboard-mock.ts`**, typed against the component prop types (`DashboardStat`, `ActivityEntry`, the three chart point shapes — each exported from its component). Features 15/16/17 delete it, the `lib/jobs-mock.ts` precedent.
+
+#### Verified in the browser, signed in (2026-08-03)
+
+`npx tsc --noEmit`, `npm run lint`, `npm run build` all clean, `/dashboard` in the build output. Signed out, `curl` shows `/dashboard` → 307 `/login`. Signed in: all four stat cards with trend badges, five activity entries with correct dot colours and connectors, all three charts matching the mock (blue bars 0–12, accent line with gradient on 0–100, green distribution bars), hover tooltip renders ("Fri — Companies researched: 12"), navbar Dashboard item active with underline, tab title "Dashboard — JobMax" (second page to override the root title). No horizontal overflow (`scrollWidth === clientWidth`); console clean (extension noise only).
+
+#### Not verified
+
+The **incomplete-banner branch was not seen rendered** — the signed-in profile row is complete, and staging an incomplete one means mutating real data; the complete branch (no banner) is what the mock shows and is what rendered. Verify the incomplete branch whenever the profile row is next legitimately incomplete, or when Feature 15's work touches this page. Responsive at 1024/430 remains blocked on the OS-maximized-window limitation every feature carries.
 
 ---
 

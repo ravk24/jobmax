@@ -352,6 +352,7 @@ Approved dependencies for this project:
 - `posthog-js` — PostHog browser client
 - `posthog-node` — PostHog server client
 - `@react-pdf/renderer` — Resume PDF generation
+- `recharts` — Dashboard charts (client components only — see library-docs.md § Recharts)
 - `zod` — Schema validation
 - `lucide-react` — Icons
 - `tailwindcss` — Styling
