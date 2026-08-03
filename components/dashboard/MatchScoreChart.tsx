@@ -40,50 +40,55 @@ export function MatchScoreChart({
           <p className="text-sm leading-5 text-text-muted">{emptyMessage}</p>
         </div>
       ) : (
-      <div className="mt-4 h-[280px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-            <CartesianGrid
-              vertical={false}
-              strokeDasharray="4 4"
-              stroke="var(--color-border)"
-            />
-            <XAxis
-              dataKey="range"
-              axisLine={false}
-              tickLine={false}
-              tickMargin={8}
-              tick={AXIS_TICK}
-            />
-            {/* No fixed domain — see JobsFoundChart; a bucket over 100 must
-                rescale the axis, never clip. */}
-            <YAxis
-              width={36}
-              axisLine={false}
-              tickLine={false}
-              tick={AXIS_TICK}
-            />
-            <Tooltip
-              cursor={{ fill: "var(--color-surface-secondary)" }}
-              contentStyle={{
-                backgroundColor: "var(--color-surface)",
-                border: "1px solid var(--color-border)",
-                borderRadius: 8,
-                fontSize: 12,
-              }}
-              labelStyle={{ color: "var(--color-text-secondary)" }}
-              itemStyle={{ color: "var(--color-text-primary)" }}
-            />
-            <Bar
-              dataKey="count"
-              name="Jobs"
-              fill="var(--color-success)"
-              radius={[4, 4, 0, 0]}
-              maxBarSize={40}
-            />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+        <div className="mt-4 h-[280px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={data}
+              margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+            >
+              <CartesianGrid
+                vertical={false}
+                strokeDasharray="4 4"
+                stroke="var(--color-border)"
+              />
+              <XAxis
+                dataKey="range"
+                axisLine={false}
+                tickLine={false}
+                tickMargin={8}
+                tick={AXIS_TICK}
+              />
+              {/* No fixed domain — see JobsFoundChart; a bucket over 100 must
+                  rescale the axis, never clip. allowDecimals only suppresses
+                  fractional ticks on an integer count axis. */}
+              <YAxis
+                width={36}
+                axisLine={false}
+                tickLine={false}
+                tick={AXIS_TICK}
+                allowDecimals={false}
+              />
+              <Tooltip
+                cursor={{ fill: "var(--color-surface-secondary)" }}
+                contentStyle={{
+                  backgroundColor: "var(--color-surface)",
+                  border: "1px solid var(--color-border)",
+                  borderRadius: 8,
+                  fontSize: 12,
+                }}
+                labelStyle={{ color: "var(--color-text-secondary)" }}
+                itemStyle={{ color: "var(--color-text-primary)" }}
+              />
+              <Bar
+                dataKey="count"
+                name="Jobs"
+                fill="var(--color-success)"
+                radius={[4, 4, 0, 0]}
+                maxBarSize={40}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       )}
     </section>
   );

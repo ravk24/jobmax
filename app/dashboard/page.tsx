@@ -98,10 +98,14 @@ function buildActivity(items: ActivityItem[]): ActivityEntry[] {
 // The lib zero-fills every window, so an ok result is never literally empty —
 // all-zero IS the no-data condition. The two messages per chart follow the
 // RecentActivity precedent: "no data yet" and "couldn't load" must not
-// collapse into one line.
+// collapse into one line. No-data copy is window-scoped ("in the last 30
+// days"), never "yet" — once all activity ages past the window, "yet" would
+// claim the user never found jobs while the all-time cards say otherwise.
+// emptyMessage is omitted on the data path: it is unused there, and a
+// sentinel string could one day render a blank slot if the pairing desynced.
 function buildJobsFoundChart(result: DailyCountsResult): {
   data: JobsFoundPoint[];
-  emptyMessage: string;
+  emptyMessage?: string;
 } {
   if (result.status === "error") {
     return { data: [], emptyMessage: "Chart couldn't be loaded." };
@@ -110,7 +114,8 @@ function buildJobsFoundChart(result: DailyCountsResult): {
   if (result.days.every((entry) => entry.count === 0)) {
     return {
       data: [],
-      emptyMessage: "No jobs found yet — run a search to see this trend.",
+      emptyMessage:
+        "No jobs found in the last 30 days — run a search to see this trend.",
     };
   }
 
@@ -119,20 +124,19 @@ function buildJobsFoundChart(result: DailyCountsResult): {
       day: formatChartDay(entry.day, { month: "short", day: "numeric" }),
       jobs: entry.count,
     })),
-    emptyMessage: "",
   };
 }
 
 function buildResearchChart(result: DailyCountsResult): {
   data: ResearchActivityPoint[];
-  emptyMessage: string;
+  emptyMessage?: string;
 } {
   if (result.status === "error") {
     return { data: [], emptyMessage: "Chart couldn't be loaded." };
   }
 
   if (result.days.every((entry) => entry.count === 0)) {
-    return { data: [], emptyMessage: "No research activity yet." };
+    return { data: [], emptyMessage: "No research in the last 7 days." };
   }
 
   // A rolling 7-day window labeled by weekday — today is the rightmost bar,
@@ -142,7 +146,6 @@ function buildResearchChart(result: DailyCountsResult): {
       day: formatChartDay(entry.day, { weekday: "short" }),
       researched: entry.count,
     })),
-    emptyMessage: "",
   };
 }
 
@@ -155,9 +158,10 @@ const MATCH_BUCKET_LABELS = [
   "90-100%",
 ] as const;
 
+// "yet" is accurate here — this distribution is all-time, not windowed.
 function buildMatchChart(result: MatchDistributionResult): {
   data: MatchScoreBucket[];
-  emptyMessage: string;
+  emptyMessage?: string;
 } {
   if (result.status === "error") {
     return { data: [], emptyMessage: "Chart couldn't be loaded." };
@@ -172,7 +176,6 @@ function buildMatchChart(result: MatchDistributionResult): {
       range: MATCH_BUCKET_LABELS[index],
       count,
     })),
-    emptyMessage: "",
   };
 }
 
