@@ -9,7 +9,7 @@ Update this file after every completed feature. Any AI agent reading this should
 **Phase:** Phase 5 — Dashboard
 **Last completed:** 17 Analytics Charts — PostHog Data (2026-08-03): the three dashboard charts read real events through the PostHog HTTP Query API (`lib/posthog-query.ts`, HogQL — posthog-node is capture-only), verified live against curl'd ground truth. **This was the last feature — the 17-feature build plan is complete.** See § Feature 17.
 **In progress:** 06 Profile Save Logic, 07 AI Profile Extraction and 08 Resume PDF Generation — **all three code complete, all three awaiting the same signed-in click-through.** Static checks pass throughout. 02 Auth is open on GitHub sign-in only — the Log out click was exercised live on 2026-08-03 (`POST /api/auth/logout` 303, sign-out worked; the `user_logged_out` capture itself remains unconfirmed in PostHog).
-**Next:** no features remain. Outstanding work is verification debt and standing items: the Feature 06/07/08 walkthrough (§ Feature 07 / § Feature 08 matrices), Feature 02's GitHub sign-in, the incomplete-profile banner branch, the `SearchControls` double-click guard, and the ledger in § each feature's review notes. New from 17's session: a `/privacy` link 404s (footer/homepage — two live hits in the dev log, 2026-08-03).
+**Next:** no features remain. Outstanding work is verification debt and standing items: the Feature 06/07/08 walkthrough (§ Feature 07 / § Feature 08 matrices), Feature 02's GitHub sign-in, the incomplete-profile banner branch, the `SearchControls` double-click guard, and the ledger in § each feature's review notes. ~~The `/privacy` 404~~ — fixed same day; see § Post-plan — Legal pages.
 
 ---
 
@@ -706,6 +706,18 @@ The **empty state and the couldn't-load line** were not staged — the signed-in
 #### Review findings triaged (2026-08-03) — pre-verification review; two open polish items
 
 Reviewed before the key existed (error branch verified, happy path pending — now verified above). Minors, none fixed pending developer decision: **(a) windowed empty-state copy says "yet"** ("No jobs found yet") — misleading once all activity ages past the 30/7-day window while all-time cards show totals; window-scoped copy would stay true. **(b) the `emptyMessage: ""` sentinel** on the data path — nothing renders it, but omitting the prop would be cleaner. (c) new-in-verification: **the research chart's auto-scale shows fractional Y ticks (0.75/1.5/2.25) for integer counts** — `allowDecimals={false}` on the YAxis is the one-line fix, and is not a fixed domain. (d) JSX inside the new conditionals is not re-indented (no formatter gate; eslint clean). (e) the distribution fetch is unbounded (commented, `averageMatchScore` precedent).
+
+---
+
+### Post-plan — Legal pages `/privacy` and `/terms` (2026-08-03)
+
+**Both routes 404'd while being linked from two places** — the marketing footer (`Footer.tsx`) and the login page's terms line — surfaced live when the user clicked them (two 404s in the dev log). Built as marketing-side pages: `app/privacy/page.tsx` and `app/terms/page.tsx` compose the marketing `Navbar` (CTA resolved by `getCurrentUser`, the homepage pattern) + a new shared `components/layout/LegalPage.tsx` + `Footer`. One shared body component so the two documents cannot drift visually — title, muted last-updated line, intro, then `{heading, paragraphs[]}` sections in the established recipes (h1 `text-3xl leading-9 font-bold tracking-tight`; h2 the standard section heading; body `text-sm leading-6 text-text-secondary`; reading column `max-w-3xl px-6 py-16` on `bg-surface`).
+
+**The copy is generic legal text, honest to what the app does** — names the categories of third-party processing (auth/DB/storage, listings, AI scoring/generation, browser automation, analytics) without naming vendors, states that applications always happen on the employer's site (the Easy-Apply invariant, user-facing), and Terms carries an AI-generated-content clause. Contact is `support@jobmax.app` — placeholder domain, same status as the Tom Wilson testimonial. Not reviewed by a lawyer; replace before this is a real product.
+
+**Not in the proxy matcher, deliberately** — public pages. Known consequence (pre-existing, shared with `/`): outside the matcher no token refresh runs, so a signed-in user with an expired access token sees the signed-out navbar CTA on these pages.
+
+Verified: `tsc`/`eslint`/`build` clean (both routes in the build output), both pages rendered in the browser with correct tab titles, navbar and footer intact.
 
 ---
 

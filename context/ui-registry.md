@@ -223,6 +223,26 @@ Last updated: 2026-07-29
 
 ---
 
+### LegalPage (/privacy, /terms)
+
+File: `components/layout/LegalPage.tsx` (shared body; composed with marketing `Navbar` + `Footer` by `app/privacy/page.tsx` and `app/terms/page.tsx`)
+Last updated: 2026-08-03
+
+| Property        | Class                                                        |
+| --------------- | ------------------------------------------------------------ |
+| Page background | `bg-surface` on the `flex-1` main                            |
+| Column          | `mx-auto w-full max-w-3xl px-6 py-16` — the reading column   |
+| Page h1         | `text-3xl leading-9 font-bold tracking-tight text-text-primary` |
+| Updated line    | `mt-2 text-sm leading-5 text-text-muted`                     |
+| Section heading | `text-base leading-6 font-semibold text-text-primary`, sections `mt-10` |
+| Body            | `text-sm leading-6 text-text-secondary`, paragraphs `mt-3`   |
+
+**Pattern notes:**
+One shared component, two pages — the documents cannot drift apart visually, and a future legal page (cookies, security) reuses it rather than inventing a prose layout. Content arrives as `{ title, lastUpdated, intro, sections: {heading, paragraphs[]}[] }` — data in the page, layout in the component, the buildStats split applied to prose.
+Marketing-side shell: these pages carry the marketing `Navbar` (CTA resolved by the page via `getCurrentUser`, never inside the component) and `Footer`, not `AppNavbar` — they are reachable signed out.
+
+---
+
 ### Hero / BottomCta
 
 Files: `components/homepage/Hero.tsx`, `components/homepage/BottomCta.tsx`
