@@ -17,17 +17,29 @@ export type JobsFoundPoint = {
 
 type Props = {
   data: JobsFoundPoint[];
+  // Shown when data is empty — the page distinguishes "no data yet" from
+  // "the read failed" here, the RecentActivity precedent. The card never
+  // hides, and the 280px slot holds so the grid keeps its footprint.
+  emptyMessage?: string;
 };
 
 const AXIS_TICK = { fill: "var(--color-chart-axis)", fontSize: 12 };
 
-export function JobsFoundChart({ data }: Props) {
+export function JobsFoundChart({
+  data,
+  emptyMessage = "No data yet.",
+}: Props) {
   return (
     <section className="rounded-2xl border border-border bg-surface p-6 shadow-[0px_1px_3px_rgba(0,0,0,0.1),0px_1px_2px_-1px_rgba(0,0,0,0.1)]">
       <h2 className="text-base leading-6 font-semibold text-text-primary">
         Jobs Found Over Time
       </h2>
 
+      {data.length === 0 ? (
+        <div className="mt-4 flex h-[280px] items-center justify-center">
+          <p className="text-sm leading-5 text-text-muted">{emptyMessage}</p>
+        </div>
+      ) : (
       <div className="mt-4 h-[280px]">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -90,6 +102,7 @@ export function JobsFoundChart({ data }: Props) {
           </AreaChart>
         </ResponsiveContainer>
       </div>
+      )}
     </section>
   );
 }

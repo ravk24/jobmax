@@ -290,7 +290,9 @@ All environment variables defined in `.env.local` for development. Never hardcod
 | `ADZUNA_APP_ID`                 | lib/adzuna.ts          |
 | `ADZUNA_APP_KEY`                | lib/adzuna.ts          |
 | `NEXT_PUBLIC_POSTHOG_KEY`       | instrumentation-client.ts, lib/posthog-server.ts |
-| `NEXT_PUBLIC_POSTHOG_HOST`      | instrumentation-client.ts, lib/posthog-server.ts |
+| `NEXT_PUBLIC_POSTHOG_HOST`      | instrumentation-client.ts, lib/posthog-server.ts, lib/posthog-query.ts |
+| `POSTHOG_PERSONAL_API_KEY`      | lib/posthog-query.ts   |
+| `POSTHOG_PROJECT_ID`            | lib/posthog-query.ts   |
 
 `NEXT_PUBLIC_` prefix means the variable is exposed to the browser. Never add `NEXT_PUBLIC_` to secret keys.
 

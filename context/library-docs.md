@@ -874,13 +874,38 @@ await posthog.shutdown(); // required — ensures event is sent
 - Browser init belongs in `instrumentation-client.ts` only — never re-init in a provider or a layout
 - Identity is mounted by `PostHogIdentity` in the root layout, so it re-identifies on every signed-in render; `resetUser()` runs in `LogoutButton`
 
+### Querying events — the HTTP Query API (Feature 17)
+
+**`posthog-node` cannot read events.** Verified against the installed 5.46.1 types: the client surface is capture, identity and feature flags only — no query, insight or HogQL API exists in the package. Reading events back (the dashboard charts) goes through PostHog's HTTP Query API, wrapped in `lib/posthog-query.ts`.
+
+```typescript
+// POST {origin}/api/projects/{projectId}/query
+// Authorization: Bearer <POSTHOG_PERSONAL_API_KEY>
+{ "query": { "kind": "HogQLQuery", "query": "SELECT ... FROM events WHERE ..." } }
+```
+
+**Two different credentials, never interchangeable.** `NEXT_PUBLIC_POSTHOG_KEY` is the project token — it can *write* events and nothing else. Querying needs a **personal API key** (`POSTHOG_PERSONAL_API_KEY`, scope `query:read`, restricted to the project) — a server-only secret. `POSTHOG_PROJECT_ID` names the project in the URL path.
+
+**The Query API origin is not the ingestion origin.** `NEXT_PUBLIC_POSTHOG_HOST` points at `https://us.i.posthog.com` (ingestion); queries go to `https://us.posthog.com`. `lib/posthog-query.ts` derives one from the other by stripping the `.i` label and throws on an unrecognised host — no third env var to drift.
+
+**Results are arrays of arrays**, positional per SELECT column — `{ "results": [["2026-08-02", 19], ...] }` — not keyed objects. Validate with zod tuples.
+
+**Interpolating values into HogQL: validate, don't escape.** HogQL `{placeholder}` parameters are not reliably available through the raw endpoint, so values are interpolated — which is only done with values that pass a strict character-set gate first (the `distinct_id` UUID regex in `lib/posthog-query.ts`). Never interpolate free text; never hand-roll quote escaping.
+
+**Rules:**
+
+- All PostHog reads go through `lib/posthog-query.ts` — server only, `{status}` result unions, never throws to the caller
+- The `/query` endpoint is rate-limited (documented on the order of 120 queries/hour sustained per team) — per-render querying is fine for one user; wrap in `unstable_cache` before this app ever has concurrent users or auto-refresh
+- `distinct_id` on our events is the InsForge `user.id` — always filter on it; a query without it reads other users' events
+- `properties.matchScore` needs `toFloat()` in HogQL and can be null (unscored jobs fire `job_found` too) — `isNotNull(toFloat(...))` excludes both null and junk
+
 ---
 
 ## Recharts
 
 **Check first:** No skill or MCP server is installed for recharts — this section and the installed types are the authority.
 
-Installed at **3.10.1** (v3 — a rewrite of v2; the component surface used here is unchanged, but verify anything beyond it against the installed `.d.ts` rather than training data). Added in Feature 14 for the three dashboard charts; Feature 17 swaps their mock props for PostHog data with no component changes.
+Installed at **3.10.1** (v3 — a rewrite of v2; the component surface used here is unchanged, but verify anything beyond it against the installed `.d.ts` rather than training data). Added in Feature 14 for the three dashboard charts; Feature 17 swapped their mock props for PostHog data — the one component change it needed, contrary to this section's original prediction, was an `emptyMessage` prop rendered when `data` is empty.
 
 ### Rules
 

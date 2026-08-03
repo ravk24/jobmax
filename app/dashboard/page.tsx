@@ -2,21 +2,25 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { IncompleteProfileBanner } from "@/components/dashboard/IncompleteProfileBanner";
-import { JobsFoundChart } from "@/components/dashboard/JobsFoundChart";
-import { MatchScoreChart } from "@/components/dashboard/MatchScoreChart";
+import {
+  JobsFoundChart,
+  type JobsFoundPoint,
+} from "@/components/dashboard/JobsFoundChart";
+import {
+  MatchScoreChart,
+  type MatchScoreBucket,
+} from "@/components/dashboard/MatchScoreChart";
 import {
   RecentActivity,
   type ActivityEntry,
 } from "@/components/dashboard/RecentActivity";
-import { ResearchActivityChart } from "@/components/dashboard/ResearchActivityChart";
+import {
+  ResearchActivityChart,
+  type ResearchActivityPoint,
+} from "@/components/dashboard/ResearchActivityChart";
 import { StatsBar, type DashboardStat } from "@/components/dashboard/StatsBar";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { LOGIN_ROUTE } from "@/lib/auth";
-import {
-  MOCK_JOBS_FOUND,
-  MOCK_MATCH_DISTRIBUTION,
-  MOCK_RESEARCH_ACTIVITY,
-} from "@/lib/dashboard-mock";
 import {
   selectDashboardStats,
   selectRecentActivity,
@@ -24,6 +28,13 @@ import {
   type DashboardStatsResult,
 } from "@/lib/dashboard-query";
 import { getCurrentUser, readProfile } from "@/lib/insforge-server";
+import {
+  selectJobsFoundDaily,
+  selectMatchScoreDistribution,
+  selectResearchDaily,
+  type DailyCountsResult,
+  type MatchDistributionResult,
+} from "@/lib/posthog-query";
 import { blankProfile, calculateCompletion } from "@/lib/profile";
 
 export const metadata: Metadata = {
@@ -82,6 +93,100 @@ function buildActivity(items: ActivityItem[]): ActivityEntry[] {
     message: activityMessage(item),
     timeAgo: formatTimeAgo(item.at),
   }));
+}
+
+// The lib zero-fills every window, so an ok result is never literally empty —
+// all-zero IS the no-data condition. The two messages per chart follow the
+// RecentActivity precedent: "no data yet" and "couldn't load" must not
+// collapse into one line.
+function buildJobsFoundChart(result: DailyCountsResult): {
+  data: JobsFoundPoint[];
+  emptyMessage: string;
+} {
+  if (result.status === "error") {
+    return { data: [], emptyMessage: "Chart couldn't be loaded." };
+  }
+
+  if (result.days.every((entry) => entry.count === 0)) {
+    return {
+      data: [],
+      emptyMessage: "No jobs found yet — run a search to see this trend.",
+    };
+  }
+
+  return {
+    data: result.days.map((entry) => ({
+      day: formatChartDay(entry.day, { month: "short", day: "numeric" }),
+      jobs: entry.count,
+    })),
+    emptyMessage: "",
+  };
+}
+
+function buildResearchChart(result: DailyCountsResult): {
+  data: ResearchActivityPoint[];
+  emptyMessage: string;
+} {
+  if (result.status === "error") {
+    return { data: [], emptyMessage: "Chart couldn't be loaded." };
+  }
+
+  if (result.days.every((entry) => entry.count === 0)) {
+    return { data: [], emptyMessage: "No research activity yet." };
+  }
+
+  // A rolling 7-day window labeled by weekday — today is the rightmost bar,
+  // so the Mon–Sun sequence rotates with the day of the week.
+  return {
+    data: result.days.map((entry) => ({
+      day: formatChartDay(entry.day, { weekday: "short" }),
+      researched: entry.count,
+    })),
+    emptyMessage: "",
+  };
+}
+
+const MATCH_BUCKET_LABELS = [
+  "<50%",
+  "50-60%",
+  "60-70%",
+  "70-80%",
+  "80-90%",
+  "90-100%",
+] as const;
+
+function buildMatchChart(result: MatchDistributionResult): {
+  data: MatchScoreBucket[];
+  emptyMessage: string;
+} {
+  if (result.status === "error") {
+    return { data: [], emptyMessage: "Chart couldn't be loaded." };
+  }
+
+  if (result.buckets.every((count) => count === 0)) {
+    return { data: [], emptyMessage: "No scored jobs yet." };
+  }
+
+  return {
+    data: result.buckets.map((count, index) => ({
+      range: MATCH_BUCKET_LABELS[index],
+      count,
+    })),
+    emptyMessage: "",
+  };
+}
+
+// The lib's days are UTC "YYYY-MM-DD"; formatting pins timeZone: "UTC" so the
+// label names the same calendar day the query bucketed, whatever the server's
+// local zone.
+function formatChartDay(
+  day: string,
+  options: Intl.DateTimeFormatOptions,
+): string {
+  return new Date(`${day}T00:00:00Z`).toLocaleDateString("en-US", {
+    ...options,
+    timeZone: "UTC",
+  });
 }
 
 // Presentation lives here, not in lib/dashboard-query.ts — the same split as
@@ -147,12 +252,23 @@ export default async function DashboardPage() {
 
   // Independent reads, so they run together. Each degrades on its own: a failed
   // profile read renders the dashboard without the banner — /profile owns that
-  // failure state — a failed stats read renders dashes via buildStats, and a
-  // failed activity read renders the card's couldn't-load line.
-  const [result, statsResult, activityResult] = await Promise.all([
+  // failure state — a failed stats read renders dashes via buildStats, a failed
+  // activity read renders the card's couldn't-load line, and each chart read
+  // degrades to its own couldn't-load state.
+  const [
+    result,
+    statsResult,
+    activityResult,
+    jobsDailyResult,
+    researchDailyResult,
+    matchResult,
+  ] = await Promise.all([
     readProfile(user),
     selectDashboardStats(user.id),
     selectRecentActivity(user.id),
+    selectJobsFoundDaily(user.id),
+    selectResearchDaily(user.id),
+    selectMatchScoreDistribution(user.id),
   ]);
   const missingFields =
     result.status === "error"
@@ -160,6 +276,10 @@ export default async function DashboardPage() {
       : calculateCompletion(
           result.status === "found" ? result.profile : blankProfile(user),
         ).missingFields;
+
+  const jobsChart = buildJobsFoundChart(jobsDailyResult);
+  const researchChart = buildResearchChart(researchDailyResult);
+  const matchChart = buildMatchChart(matchResult);
 
   return (
     <>
@@ -188,12 +308,21 @@ export default async function DashboardPage() {
                   : "Activity couldn't be loaded."
               }
             />
-            <ResearchActivityChart data={MOCK_RESEARCH_ACTIVITY} />
+            <ResearchActivityChart
+              data={researchChart.data}
+              emptyMessage={researchChart.emptyMessage}
+            />
           </div>
 
           <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
-            <JobsFoundChart data={MOCK_JOBS_FOUND} />
-            <MatchScoreChart data={MOCK_MATCH_DISTRIBUTION} />
+            <JobsFoundChart
+              data={jobsChart.data}
+              emptyMessage={jobsChart.emptyMessage}
+            />
+            <MatchScoreChart
+              data={matchChart.data}
+              emptyMessage={matchChart.emptyMessage}
+            />
           </div>
         </div>
       </main>

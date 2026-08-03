@@ -133,7 +133,8 @@
 │   ├── stagehand.ts                       → Stagehand initialisation with Browserbase session
 │   ├── adzuna.ts                          → Adzuna API client
 │   ├── posthog-client.ts                  → Typed capture surface (NOT init — see library-docs.md)
-│   ├── posthog-server.ts                  → PostHog server client (posthog-node)
+│   ├── posthog-server.ts                  → PostHog server client (posthog-node, capture only)
+│   ├── posthog-query.ts                   → PostHog Query API read layer — HogQL, dashboard charts (server only)
 │   └── utils.ts                           → Shared utility functions
 └── types/
     └── index.ts                           → Global TypeScript types

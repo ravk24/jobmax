@@ -7,9 +7,9 @@ Update this file after every completed feature. Any AI agent reading this should
 ## Current Status
 
 **Phase:** Phase 5 — Dashboard
-**Last completed:** 16 Recent Activity — Real Data (2026-08-03): the activity feed merges completed search runs (`agent_runs`, filtered `job_title_searched IS NOT NULL` per § Feature 13's carry-forward) with researched jobs, ordered by a new `jobs.researched_at` column the dossier save now stamps. Verified in the browser against SQL ground truth. See § Feature 16. Feature 15 (stats bar real data) landed the same day — see § Feature 15.
-**In progress:** 06 Profile Save Logic, 07 AI Profile Extraction and 08 Resume PDF Generation — **all three code complete, all three awaiting the same signed-in click-through.** Static checks pass throughout. 02 Auth is still open on GitHub sign-in and the Log out click.
-**Next:** 17 Analytics Charts — PostHog Data. On record for it: **keep axis labels and hover tooltips** (they are the palette contrast-WARN relief, § Feature 14), keep auto-scaled domains, add per-chart empty states, and `job_found` events carry a null `matchScore` for unscored jobs (§ Feature 10) — decide how the distribution chart buckets those. The Feature 06/07/08 walkthrough is still owed and is independent; see § Feature 07 and § Feature 08 for the matrices.
+**Last completed:** 17 Analytics Charts — PostHog Data (2026-08-03): the three dashboard charts read real events through the PostHog HTTP Query API (`lib/posthog-query.ts`, HogQL — posthog-node is capture-only), verified live against curl'd ground truth. **This was the last feature — the 17-feature build plan is complete.** See § Feature 17.
+**In progress:** 06 Profile Save Logic, 07 AI Profile Extraction and 08 Resume PDF Generation — **all three code complete, all three awaiting the same signed-in click-through.** Static checks pass throughout. 02 Auth is open on GitHub sign-in only — the Log out click was exercised live on 2026-08-03 (`POST /api/auth/logout` 303, sign-out worked; the `user_logged_out` capture itself remains unconfirmed in PostHog).
+**Next:** no features remain. Outstanding work is verification debt and standing items: the Feature 06/07/08 walkthrough (§ Feature 07 / § Feature 08 matrices), Feature 02's GitHub sign-in, the incomplete-profile banner branch, the `SearchControls` double-click guard, and the ledger in § each feature's review notes. New from 17's session: a `/privacy` link 404s (footer/homepage — two live hits in the dev log, 2026-08-03).
 
 ---
 
@@ -45,7 +45,7 @@ Update this file after every completed feature. Any AI agent reading this should
 - [x] 14 Dashboard Page — Full UI (mock stats/activity/charts; the incomplete-profile banner is real)
 - [x] 15 Stats Bar — Real Data (activity/charts still mock; `MOCK_STATS` deleted)
 - [x] 16 Recent Activity — Real Data (charts still mock; `MOCK_ACTIVITY` deleted; `jobs.researched_at` added)
-- [ ] 17 Analytics Charts — PostHog Data
+- [x] 17 Analytics Charts — PostHog Data (build plan complete; `lib/dashboard-mock.ts` deleted)
 
 ---
 
@@ -684,6 +684,28 @@ The **empty state and the couldn't-load line** were not staged — the signed-in
 - **Time vocabulary stops at "N days ago"** — a month-old entry reads "34 days ago", not a date; only the top 5 render, so rare.
 - **Unstaged branches** as listed in the two Not verified blocks above.
 - **Observation: the real feed now displays the `SearchControls` double-click bug** — the live data's paired runs seconds apart ("Found 0 jobs" / "Found 10 jobs" for the same title) are duplicate agent runs from the unguarded button, now user-visible on the dashboard. Raises the priority of the standing 2-line `useRef` fix (see § Feature 13 / the registry's SearchControls note).
+
+---
+
+### Feature 17 — Analytics Charts — PostHog Data (2026-08-03)
+
+**The charts read PostHog through the HTTP Query API, because nothing else can read PostHog.** No PostHog MCP is configured, and `posthog-node@5.46.1` is capture/flags-only — verified against the installed types, zero query surface. `lib/posthog-query.ts` POSTs HogQL to `/api/projects/{id}/query`, authenticated by a **personal API key** (`POSTHOG_PERSONAL_API_KEY`, scope query:read — a server-only secret, minted this session) with `POSTHOG_PROJECT_ID=533085` (recovered from `posthog-setup-report.md`). The project token cannot query; `library-docs.md § PostHog → Querying events` now documents the split. The Query API origin (`us.posthog.com`) is derived from the ingestion host by stripping `.i` — no third env var to drift; unrecognised hosts throw.
+
+**Three exports, per-chart independent degrade** — `selectJobsFoundDaily` (30 days), `selectResearchDaily` (7 days), `selectMatchScoreDistribution` (all-time, six buckets `<50%` + the design's five, **null matchScore excluded** — a score distribution charts scores, closing § Feature 10's open item). Zero-filling lives in the lib (a missing day is a zero-activity day — completeness is data); labels live in the page (`formatChartDay`, UTC-pinned). **UTC end-to-end by assumption**, commented with the tradeoff. `distinct_id` interpolation is **validate-don't-escape**: the session-sourced UUID passes a hex-and-hyphens regex or the read fails closed. Rate limits: per-render querying, revisit trigger in the lib header.
+
+**The design-mock bucket set was extended, not obeyed**: the mock's 50–100 buckets would have hidden most real data (live average is 42). `<50%` + the five design buckets, decided in `/architect`.
+
+**Charts gained exactly one prop** — `emptyMessage`, rendered as the registry's card-empty-state line centred in the held `h-[280px]` slot when `data` is empty. The page distinguishes error ("Chart couldn't be loaded.") from all-zero no-data (per-chart copy); an ok zero-filled result is never literally empty, so **all-zero IS the no-data condition**. Axis labels, tooltips and auto-scaled domains untouched — § Feature 14's contrast-relief requirement.
+
+**`lib/dashboard-mock.ts` is deleted** — the last mock surface, and with it the project's only lib→components import.
+
+#### Verified live, signed in (2026-08-03)
+
+`tsc`/`eslint`/`build` clean. Ground truth curl'd from the Query API first: sanity query confirmed `distinct_id` = InsForge `user.id` (49 `job_found`, **3 `company_researched`** — the research agent ran three times in Feature 13 testing; events count *activity*, the stats card counts *rows*, 1 — different sources, both honest). The three production queries predicted: Aug 2 = 49 with 29 zero days; today (Mon Aug 3) = 3; buckets 28/1/1/5/4/0 (39 scored = exactly the DB's 49 − 10 unscored, the null filter working). **The page rendered all three exactly**: 30-day axis Jul 5→Aug 3 with auto-thinned date ticks and the 49-spike (tooltip "Aug 2 — Jobs found: 49"), research bar 3 on the rightmost (today) slot, distribution bars 28/1/1/5/4/0. Console clean. **The error branch was verified first, live, before the key existed**: all three charts fail closed to "Chart couldn't be loaded." in held slots, three `[lib/posthog-query]` errors in the server log, stats/activity unaffected, page 200 — the dev overlay's "N issues" badge is those logged errors, expected in dev only.
+
+#### Review findings triaged (2026-08-03) — pre-verification review; two open polish items
+
+Reviewed before the key existed (error branch verified, happy path pending — now verified above). Minors, none fixed pending developer decision: **(a) windowed empty-state copy says "yet"** ("No jobs found yet") — misleading once all activity ages past the 30/7-day window while all-time cards show totals; window-scoped copy would stay true. **(b) the `emptyMessage: ""` sentinel** on the data path — nothing renders it, but omitting the prop would be cleaner. (c) new-in-verification: **the research chart's auto-scale shows fractional Y ticks (0.75/1.5/2.25) for integer counts** — `allowDecimals={false}` on the YAxis is the one-line fix, and is not a fixed domain. (d) JSX inside the new conditionals is not re-indented (no formatter gate; eslint clean). (e) the distribution fetch is unbounded (commented, `averageMatchScore` precedent).
 
 ---
 
