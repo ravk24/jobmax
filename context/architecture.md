@@ -299,6 +299,7 @@ Resume upload is the one UI-triggered mutation that is **not** a Server Action. 
 | matched_skills     | text[]      | Skills user has that match                     |
 | missing_skills     | text[]      | Skills user lacks                              |
 | company_research   | jsonb       | Company dossier from research agent            |
+| researched_at      | timestamptz | Stamped with the dossier save (Feature 16) — the activity feed's research timestamp; null until first researched |
 | found_at           | timestamptz |                                                |
 
 ### `agent_logs`

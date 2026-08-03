@@ -737,9 +737,16 @@ export async function researchCompany(
     };
 
     const insforge = await createInsforgeServer();
+    // researched_at is the dashboard activity feed's timestamp (Feature 16) —
+    // nothing else records when a dossier landed; the jobs row has no
+    // updated_at and the research agent_runs row carries no job reference.
+    // A re-run re-stamps it, so re-research surfaces as fresh activity.
     const { error: saveError } = await insforge.database
       .from("jobs")
-      .update({ company_research: dossier })
+      .update({
+        company_research: dossier,
+        researched_at: new Date().toISOString(),
+      })
       // RLS scopes this too; the explicit filter stays, as everywhere else.
       .eq("id", jobId)
       .eq("user_id", user.id);

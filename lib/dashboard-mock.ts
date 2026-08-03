@@ -1,46 +1,12 @@
-// Mock dashboard data for Feature 14 — the UI ships against these shapes and
-// Features 16/17 replace what remains with real reads, the same way
+// Mock dashboard data for Feature 14 — the chart UI ships against these shapes
+// and Feature 17 replaces what remains with real reads, the same way
 // lib/jobs-mock.ts stood in for Features 09→10. Values match
-// context/design/dashboard.png. MOCK_STATS left in Feature 15, replaced by
-// lib/dashboard-query.ts.
+// context/design/dashboard.png. MOCK_STATS left in Feature 15 and
+// MOCK_ACTIVITY in 16, both replaced by lib/dashboard-query.ts.
 
-import type { ActivityEntry } from "@/components/dashboard/RecentActivity";
 import type { JobsFoundPoint } from "@/components/dashboard/JobsFoundChart";
 import type { MatchScoreBucket } from "@/components/dashboard/MatchScoreChart";
 import type { ResearchActivityPoint } from "@/components/dashboard/ResearchActivityChart";
-
-export const MOCK_ACTIVITY: ActivityEntry[] = [
-  {
-    id: "activity-1",
-    kind: "search",
-    message: "Found 8 jobs for Frontend Engineer",
-    timeAgo: "10 mins ago",
-  },
-  {
-    id: "activity-2",
-    kind: "research",
-    message: "Researched Stripe",
-    timeAgo: "1 hour ago",
-  },
-  {
-    id: "activity-3",
-    kind: "search",
-    message: "Found 12 jobs for React Developer",
-    timeAgo: "2 hours ago",
-  },
-  {
-    id: "activity-4",
-    kind: "research",
-    message: "Researched Vercel",
-    timeAgo: "Yesterday",
-  },
-  {
-    id: "activity-5",
-    kind: "search",
-    message: "Found 10 jobs for Full Stack Engineer",
-    timeAgo: "Yesterday",
-  },
-];
 
 export const MOCK_RESEARCH_ACTIVITY: ResearchActivityPoint[] = [
   { day: "Mon", researched: 2 },

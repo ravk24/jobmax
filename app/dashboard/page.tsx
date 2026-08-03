@@ -4,19 +4,23 @@ import { redirect } from "next/navigation";
 import { IncompleteProfileBanner } from "@/components/dashboard/IncompleteProfileBanner";
 import { JobsFoundChart } from "@/components/dashboard/JobsFoundChart";
 import { MatchScoreChart } from "@/components/dashboard/MatchScoreChart";
-import { RecentActivity } from "@/components/dashboard/RecentActivity";
+import {
+  RecentActivity,
+  type ActivityEntry,
+} from "@/components/dashboard/RecentActivity";
 import { ResearchActivityChart } from "@/components/dashboard/ResearchActivityChart";
 import { StatsBar, type DashboardStat } from "@/components/dashboard/StatsBar";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { LOGIN_ROUTE } from "@/lib/auth";
 import {
-  MOCK_ACTIVITY,
   MOCK_JOBS_FOUND,
   MOCK_MATCH_DISTRIBUTION,
   MOCK_RESEARCH_ACTIVITY,
 } from "@/lib/dashboard-mock";
 import {
   selectDashboardStats,
+  selectRecentActivity,
+  type ActivityItem,
   type DashboardStatsResult,
 } from "@/lib/dashboard-query";
 import { getCurrentUser, readProfile } from "@/lib/insforge-server";
@@ -37,6 +41,47 @@ function trendBadge(current: number, prior: number): string | null {
 
   const pct = Math.round(((current - prior) / prior) * 100);
   return pct > 0 ? `+${pct}%` : null;
+}
+
+// The mock's vocabulary ("10 mins ago", "Yesterday"), computed. Coarse on
+// purpose — an activity feed does not need seconds, and the page re-renders
+// per request so the strings never go stale on screen.
+function formatTimeAgo(iso: string): string {
+  const elapsedMs = Date.now() - Date.parse(iso);
+  const minutes = Math.floor(elapsedMs / 60_000);
+
+  if (minutes < 1) return "Just now";
+  if (minutes === 1) return "1 min ago";
+  if (minutes < 60) return `${minutes} mins ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours === 1) return "1 hour ago";
+  if (hours < 24) return `${hours} hours ago`;
+
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "Yesterday";
+  return `${days} days ago`;
+}
+
+function activityMessage(item: ActivityItem): string {
+  if (item.kind === "research") {
+    return `Researched ${item.company}`;
+  }
+
+  const noun = item.jobsFound === 1 ? "job" : "jobs";
+  return `Found ${item.jobsFound} ${noun} for ${item.jobTitle}`;
+}
+
+// Ids are prefixed by kind: a search entry's id is an agent_runs uuid and a
+// research entry's is a jobs uuid — distinct tables, so collision is
+// theoretical, but a React key should not rest on that.
+function buildActivity(items: ActivityItem[]): ActivityEntry[] {
+  return items.map((item) => ({
+    id: `${item.kind}-${item.id}`,
+    kind: item.kind,
+    message: activityMessage(item),
+    timeAgo: formatTimeAgo(item.at),
+  }));
 }
 
 // Presentation lives here, not in lib/dashboard-query.ts — the same split as
@@ -102,10 +147,12 @@ export default async function DashboardPage() {
 
   // Independent reads, so they run together. Each degrades on its own: a failed
   // profile read renders the dashboard without the banner — /profile owns that
-  // failure state — and a failed stats read renders dashes via buildStats.
-  const [result, statsResult] = await Promise.all([
+  // failure state — a failed stats read renders dashes via buildStats, and a
+  // failed activity read renders the card's couldn't-load line.
+  const [result, statsResult, activityResult] = await Promise.all([
     readProfile(user),
     selectDashboardStats(user.id),
+    selectRecentActivity(user.id),
   ]);
   const missingFields =
     result.status === "error"
@@ -129,7 +176,18 @@ export default async function DashboardPage() {
           <StatsBar stats={buildStats(statsResult)} />
 
           <div className="grid gap-6 lg:grid-cols-[2fr_3fr]">
-            <RecentActivity entries={MOCK_ACTIVITY} />
+            <RecentActivity
+              entries={
+                activityResult.status === "ok"
+                  ? buildActivity(activityResult.items)
+                  : []
+              }
+              emptyMessage={
+                activityResult.status === "ok"
+                  ? "No activity yet — search for jobs to get started."
+                  : "Activity couldn't be loaded."
+              }
+            />
             <ResearchActivityChart data={MOCK_RESEARCH_ACTIVITY} />
           </div>
 

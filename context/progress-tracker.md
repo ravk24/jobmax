@@ -7,9 +7,9 @@ Update this file after every completed feature. Any AI agent reading this should
 ## Current Status
 
 **Phase:** Phase 5 — Dashboard
-**Last completed:** 15 Stats Bar — Real Data (2026-08-03): the four stat cards read live InsForge counts through the new `lib/dashboard-query.ts`; trend badges are computed week-over-week, shown only for genuine positive movement. Verified in the browser signed in against SQL ground truth, including the badge branch via temporarily backdated test rows. See § Feature 15.
+**Last completed:** 16 Recent Activity — Real Data (2026-08-03): the activity feed merges completed search runs (`agent_runs`, filtered `job_title_searched IS NOT NULL` per § Feature 13's carry-forward) with researched jobs, ordered by a new `jobs.researched_at` column the dossier save now stamps. Verified in the browser against SQL ground truth. See § Feature 16. Feature 15 (stats bar real data) landed the same day — see § Feature 15.
 **In progress:** 06 Profile Save Logic, 07 AI Profile Extraction and 08 Resume PDF Generation — **all three code complete, all three awaiting the same signed-in click-through.** Static checks pass throughout. 02 Auth is still open on GitHub sign-in and the Log out click.
-**Next:** 16 Recent Activity — Real Data. **Carry-forward requirement from § Feature 13 review:** any stat or activity read that counts `agent_runs` as searches must filter `job_title_searched IS NOT NULL`, or research runs inflate it — Feature 15 never touched `agent_runs` (all four cards are jobs-table counts), so the requirement lands squarely on 16. The Feature 06/07/08 walkthrough is still owed and is independent; see § Feature 07 and § Feature 08 for the matrices.
+**Next:** 17 Analytics Charts — PostHog Data. On record for it: **keep axis labels and hover tooltips** (they are the palette contrast-WARN relief, § Feature 14), keep auto-scaled domains, add per-chart empty states, and `job_found` events carry a null `matchScore` for unscored jobs (§ Feature 10) — decide how the distribution chart buckets those. The Feature 06/07/08 walkthrough is still owed and is independent; see § Feature 07 and § Feature 08 for the matrices.
 
 ---
 
@@ -44,7 +44,7 @@ Update this file after every completed feature. Any AI agent reading this should
 
 - [x] 14 Dashboard Page — Full UI (mock stats/activity/charts; the incomplete-profile banner is real)
 - [x] 15 Stats Bar — Real Data (activity/charts still mock; `MOCK_STATS` deleted)
-- [ ] 16 Recent Activity — Real Data
+- [x] 16 Recent Activity — Real Data (charts still mock; `MOCK_ACTIVITY` deleted; `jobs.researched_at` added)
 - [ ] 17 Analytics Charts — PostHog Data
 
 ---
@@ -653,6 +653,37 @@ The **incomplete-banner branch was not seen rendered** — the signed-in profile
 #### Not verified
 
 The **error branch** (four dashes) was not staged — it requires a database failure mid-render. The **incomplete-profile banner branch stays owed** from § Feature 14: this feature never made the profile row incomplete, so the chance did not arise. The `+0%`-rounding hide is arithmetic, unexercised by the live data.
+
+---
+
+### Feature 16 — Recent Activity — Real Data (2026-08-03)
+
+**Nothing recorded when a job was researched, so `jobs.researched_at` (timestamptz, nullable) was added.** The jobs row has no `updated_at`, the research `agent_runs` row deliberately carries no job reference (its null search columns are how research runs are recognised — § Feature 13), and `agent_logs` is a log stream, not a data model to build a feed on. `agent/research.ts` now stamps `researched_at` in the same update that saves the dossier, so a re-run re-stamps it and re-research surfaces as fresh activity. The one pre-existing dossier row was backfilled from its own dossier-saved success log via SQL. `architecture.md`'s jobs table documents the column. This is the feature's one schema change; additive and nullable.
+
+**The feed is the top five of two merged reads in `lib/dashboard-query.ts § selectRecentActivity`.** Searches: `agent_runs` where `status = 'completed'` **and `job_title_searched IS NOT NULL`** — § Feature 13 review's carry-forward requirement, discharged here; research runs share the table and would otherwise appear as blank searches. A defensive `completed_at IS NOT NULL` keeps a half-written row from failing the zod parse. Research: jobs where `company_research IS NOT NULL AND researched_at IS NOT NULL` (the second filter also hides any dossier row that predates the column). Five fetched per source — the merged top five is always contained in the union of each source's top five — sorted by timestamp descending in JS. Searches order on `completed_at` ("Found X jobs" became true at completion), research on `researched_at`.
+
+**Same raw-data/presentation split as Feature 15.** The lib returns `ActivityItem` (a kind-discriminated union of raw fields); `app/dashboard/page.tsx` composes the display strings — `activityMessage()` ("Found X jobs for Y" with singular "1 job", "Researched Z") and `formatTimeAgo()` (Just now / mins / hours / Yesterday / days, the mock's vocabulary, rolling not calendar). React keys are `${kind}-${id}` — the two id namespaces are different tables, and a key should not rest on uuid non-collision. Either source failing fails the whole read: a feed silently missing one kind of activity looks complete and is not.
+
+**`RecentActivity` gained an `emptyMessage` prop and never hides** (the SkillsComparison rule). The page distinguishes the two empty renders: read ok with no items → "No activity yet — search for jobs to get started."; read failed → "Activity couldn't be loaded." The list `<ol>` renders only when entries exist, so the empty state is one muted line, not a padded void. `MOCK_ACTIVITY` deleted from `lib/dashboard-mock.ts`, which is now charts-only and dies with Feature 17.
+
+#### Verified in the browser, signed in (2026-08-03)
+
+`npx tsc --noEmit`, `eslint`, `npm run build` all clean. SQL ground truth (a UNION mirroring both reads) predicted five entries; the page rendered exactly them, in order: **"Researched ManpowerGroup — 5 hours ago"** (info-blue dot, the backfilled timestamp) above four green search entries — **"Found 0 jobs for QA Engineer", "Found 10 jobs for QA Engineer", "Found 9 jobs for Frontend Engineer", "Found 0 jobs for DevOps Engineer", all "19 hours ago"**. The 0-count entries render with plural "jobs", correctly. Stats bar and the three mock charts unaffected (a first screenshot caught the recharts entrance animation mid-flight — bars grow over ~1s; not a bug). Console clean.
+
+#### Not verified
+
+The **empty state and the couldn't-load line** were not staged — the signed-in account has activity, and the error branch needs a mid-render database failure. `formatTimeAgo`'s "Just now"/"mins"/"Yesterday"/"days" branches are unexercised by the live data (everything sat in the hours band); they are arithmetic. **A failed search run is excluded by design** (`status = 'completed'`, build-plan § 16's "agent_run completed") — the two 0-job entries above are *completed* runs that found nothing, which is activity, not failure. The incomplete-profile banner branch stays owed from § Feature 14.
+
+#### Review findings triaged (2026-08-03) — none require action; all noted
+
+`/review` of Features 15+16 together: plan alignment and system integrity pass (the one scope addition, `jobs.researched_at`, was already flagged and documented above). Five minors, one observation, no fixes applied:
+
+- **No index backs the activity queries** — `agent_runs` is indexed on `(user_id, started_at DESC)` but the feed orders by `completed_at`; `researched_at` has no index. Add one only if these tables ever grow real volume.
+- **`averageMatchScore` has no `.limit()`** — if InsForge sets PostgREST's `db-max-rows`, a large table would silently average a truncated set. Already commented in code with its revisit trigger.
+- **`formatTimeAgo` trusts the timestamp format** — a non-parseable string renders "NaN days ago"; PostgREST always returns valid ISO, so theoretical.
+- **Time vocabulary stops at "N days ago"** — a month-old entry reads "34 days ago", not a date; only the top 5 render, so rare.
+- **Unstaged branches** as listed in the two Not verified blocks above.
+- **Observation: the real feed now displays the `SearchControls` double-click bug** — the live data's paired runs seconds apart ("Found 0 jobs" / "Found 10 jobs" for the same title) are duplicate agent runs from the unguarded button, now user-visible on the dashboard. Raises the priority of the standing 2-line `useRef` fix (see § Feature 13 / the registry's SearchControls note).
 
 ---
 

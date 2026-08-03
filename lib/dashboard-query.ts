@@ -138,6 +138,140 @@ async function averageMatchScore(
   return { status: "ok", value: sum / parsed.data.length };
 }
 
+// The two in-scope activity kinds, as data — the page composes the message
+// strings and the time-ago captions. `at` drives the merged ordering.
+export type ActivityItem =
+  | { kind: "search"; id: string; jobTitle: string; jobsFound: number; at: string }
+  | { kind: "research"; id: string; company: string; at: string };
+
+export type RecentActivityResult =
+  | { status: "ok"; items: ActivityItem[] }
+  | { status: "error" };
+
+// The design shows five entries; fetching five per source is enough, because
+// the overall top five is always contained in the union of each source's top
+// five.
+const ACTIVITY_LIMIT = 5;
+
+const searchRunRowSchema = z.object({
+  id: z.string(),
+  job_title_searched: z.string(),
+  jobs_found: z.number().int().nullable(),
+  completed_at: z.string(),
+});
+
+// § Feature 13 review's carry-forward: research runs share agent_runs, and are
+// recognisable by null search columns — a run only counts as a search when
+// job_title_searched is set. Completed runs only ("agent_run completed",
+// build-plan § 16); the completed_at not-null filter is defensive belt to
+// status's braces, and spares the schema a nullable it would trip over.
+async function selectSearchActivity(
+  insforge: InsforgeServer,
+  userId: string,
+): Promise<ActivityItem[] | null> {
+  const { data, error } = await insforge.database
+    .from("agent_runs")
+    .select("id,job_title_searched,jobs_found,completed_at")
+    .eq("user_id", userId)
+    .eq("status", "completed")
+    .not("job_title_searched", "is", null)
+    .not("completed_at", "is", null)
+    .order("completed_at", { ascending: false })
+    .limit(ACTIVITY_LIMIT);
+
+  if (error) {
+    console.error("[lib/dashboard-query]", error.message);
+    return null;
+  }
+
+  const parsed = z.array(searchRunRowSchema).safeParse(data ?? []);
+
+  if (!parsed.success) {
+    console.error("[lib/dashboard-query]", parsed.error.issues);
+    return null;
+  }
+
+  return parsed.data.map((row) => ({
+    kind: "search",
+    id: row.id,
+    jobTitle: row.job_title_searched,
+    // finishRun always writes jobs_found on a completed search run; 0 is the
+    // honest degrade if a row ever arrives without it.
+    jobsFound: row.jobs_found ?? 0,
+    at: row.completed_at,
+  }));
+}
+
+const researchedJobRowSchema = z.object({
+  id: z.string(),
+  company: z.string(),
+  researched_at: z.string(),
+});
+
+// researched_at was added for exactly this read — the dossier save stamps it,
+// and it is the only record of when research happened. The not-null filter
+// keeps the read robust against any dossier row that predates the column.
+async function selectResearchActivity(
+  insforge: InsforgeServer,
+  userId: string,
+): Promise<ActivityItem[] | null> {
+  const { data, error } = await insforge.database
+    .from("jobs")
+    .select("id,company,researched_at")
+    .eq("user_id", userId)
+    .not("company_research", "is", null)
+    .not("researched_at", "is", null)
+    .order("researched_at", { ascending: false })
+    .limit(ACTIVITY_LIMIT);
+
+  if (error) {
+    console.error("[lib/dashboard-query]", error.message);
+    return null;
+  }
+
+  const parsed = z.array(researchedJobRowSchema).safeParse(data ?? []);
+
+  if (!parsed.success) {
+    console.error("[lib/dashboard-query]", parsed.error.issues);
+    return null;
+  }
+
+  return parsed.data.map((row) => ({
+    kind: "research",
+    id: row.id,
+    company: row.company,
+    at: row.researched_at,
+  }));
+}
+
+export async function selectRecentActivity(
+  userId: string,
+): Promise<RecentActivityResult> {
+  try {
+    const insforge = await createInsforgeServer();
+
+    const [searches, research] = await Promise.all([
+      selectSearchActivity(insforge, userId),
+      selectResearchActivity(insforge, userId),
+    ]);
+
+    // Either source failing fails the read — a feed silently missing one kind
+    // of activity looks complete and is not, the selectDashboardStats posture.
+    if (searches === null || research === null) {
+      return { status: "error" };
+    }
+
+    const items = [...searches, ...research]
+      .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
+      .slice(0, ACTIVITY_LIMIT);
+
+    return { status: "ok", items };
+  } catch (error) {
+    console.error("[lib/dashboard-query]", error);
+    return { status: "error" };
+  }
+}
+
 export async function selectDashboardStats(
   userId: string,
 ): Promise<DashboardStatsResult> {
