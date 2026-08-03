@@ -46,6 +46,10 @@ export default async function DashboardPage() {
 
       <main className="flex-1 bg-background px-6 py-8">
         <div className="mx-auto flex max-w-[1440px] flex-col gap-6">
+          {/* The design shows no page title; the sr-only h1 keeps the document
+              outline honest — the find-jobs precedent. */}
+          <h1 className="sr-only">Dashboard</h1>
+
           <IncompleteProfileBanner missingFields={missingFields} />
 
           <StatsBar stats={MOCK_STATS} />

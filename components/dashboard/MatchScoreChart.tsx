@@ -43,10 +43,10 @@ export function MatchScoreChart({ data }: Props) {
               tickMargin={8}
               tick={AXIS_TICK}
             />
+            {/* No fixed domain — see JobsFoundChart; a bucket over 100 must
+                rescale the axis, never clip. */}
             <YAxis
               width={36}
-              domain={[0, 100]}
-              ticks={[0, 25, 50, 75, 100]}
               axisLine={false}
               tickLine={false}
               tick={AXIS_TICK}

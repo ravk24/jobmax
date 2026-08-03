@@ -617,6 +617,21 @@ Also restated by review, pre-existing: AGENTS.md's "AgentSpan step IDs `apply-{j
 
 The **incomplete-banner branch was not seen rendered** — the signed-in profile row is complete, and staging an incomplete one means mutating real data; the complete branch (no banner) is what the mock shows and is what rendered. Verify the incomplete branch whenever the profile row is next legitimately incomplete, or when Feature 15's work touches this page. Responsive at 1024/430 remains blocked on the OS-maximized-window limitation every feature carries.
 
+#### Review findings triaged (2026-08-03) — three fixed, rest noted
+
+`/review` passed plan alignment; seven findings, none critical. **Fixed same day:**
+
+1. **`/dashboard` now carries an `sr-only` h1** ("Dashboard") — the page had no h1 at all, every heading being an h2. Copied the `/find-jobs` precedent. `/profile` still shares this gap — pre-existing, owed whenever that page is next touched.
+2. **The fixed `domain={[0,100]}`/`ticks` were removed from `JobsFoundChart` and `MatchScoreChart`.** Real Feature 17 data over 100 would have been *clipped at the top of the plot* — wrong in a way that looks plausible. Recharts' nice-tick auto-scale reproduces the mock's 0/25/50/75/100 axis for the mock data (verified in the browser after the change) and rescales rather than clips for anything larger. The research chart always auto-scaled.
+3. **`app/dashboard/loading.tsx` added** — the page awaits a real profile read, and the job-details precedent says a navigation that waits on the database needs pending feedback. The skeleton mirrors the grid. *Not observed painting* — the local read resolves too fast; it will show on a slow connection.
+
+**Noted, no action:**
+
+- `lib/dashboard-mock.ts` imports types from `components/dashboard/` — the project's first `lib → components` import. Type-only, forbidden by no invariant (only `agent/` is barred), and the file dies with Features 15/16/17. If a *second* lib→components import ever looks necessary, move the shared types to `types/index.ts` instead.
+- The `AXIS_TICK` const and tooltip `contentStyle` literal are copied across the three chart files. Same family as the card-class-literal standing item. **The rule: a fourth chart triggers extraction of a shared chart-chrome module; three copies do not.**
+- Recharts prop styling as the second sanctioned non-Tailwind surface, and the mock numbers rendering to a real user, were both already documented above — deliberate.
+- The banner's incomplete branch stays owed, as recorded under Not verified.
+
 ---
 
 ### Cross-cutting — AI provider changed to Google Gemini (2026-07-31)

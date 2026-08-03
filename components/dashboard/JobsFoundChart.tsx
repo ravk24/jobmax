@@ -59,10 +59,11 @@ export function JobsFoundChart({ data }: Props) {
               tickMargin={8}
               tick={AXIS_TICK}
             />
+            {/* No fixed domain — recharts' nice-tick auto-scale reproduces the
+                mock's 0–100 axis for this data and cannot clip real data when
+                Feature 17 wires it. */}
             <YAxis
               width={36}
-              domain={[0, 100]}
-              ticks={[0, 25, 50, 75, 100]}
               axisLine={false}
               tickLine={false}
               tick={AXIS_TICK}

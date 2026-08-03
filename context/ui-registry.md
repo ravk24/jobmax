@@ -877,6 +877,7 @@ Source: `context/design/dashboard.png`. Stats and charts render mock data from `
 **Activity dot colours key off the entry type, never the mock's pixels.** The mock's purple dots belong to out-of-scope activity kinds (resume tailoring); the two real kinds follow Feature 16's rule — search = success, research = info.
 **Single-series charts carry no legend** — the card heading names the series (the dataviz rule; the design agrees). Hover tooltips are styled with the same tokens (`surface`/`border`/12px) so the chart's one interactive layer stays inside the system.
 **The banner guards itself** (`missingFields.length === 0` → `null`), so the page composes it unconditionally and the mock's bannerless layout is the complete-profile rendering, not a separate branch.
+**Chart Y-axes are never given a fixed `domain`** (post-review). A hardcoded `[0,100]` clips any larger value silently; recharts' nice-tick auto-scale reproduces the design's 0/25/50/75/100 for data topping out under 100 and rescales beyond it. The page also carries an `sr-only` h1 (the find-jobs precedent) and `app/dashboard/loading.tsx`, a skeleton mirroring this grid.
 
 ---
 
